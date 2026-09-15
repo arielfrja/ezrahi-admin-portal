@@ -13,6 +13,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 
 import { RegisterOrgDialogComponent } from '../register-org-dialog/register-org-dialog.component';
+import { EditOrgDialogComponent } from '../edit-org-dialog/edit-org-dialog.component';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 
 /** License status codes mapped to Hebrew display labels. Data stays in English. */
@@ -82,6 +83,20 @@ export class OrgListComponent implements OnInit {
     dialogRef.afterClosed().subscribe((result: { name: string; orgId: string } | undefined) => {
       if (result) {
         this.snackBar.open('הארגון נוצר בהצלחה.', 'אישור', { duration: 3000 });
+      }
+    });
+  }
+
+  // Edit organization info + license
+  openEditDialog(org: Organization): void {
+    const dialogRef = this.dialog.open(EditOrgDialogComponent, {
+      width: '520px',
+      data: { org }
+    });
+
+    dialogRef.afterClosed().subscribe((saved: boolean) => {
+      if (saved) {
+        this.snackBar.open('הארגון עודכן בהצלחה.', 'אישור', { duration: 2500 });
       }
     });
   }

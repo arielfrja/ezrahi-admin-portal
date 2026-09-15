@@ -59,6 +59,10 @@
       <ng-container matColumnDef="actions">
         <th mat-header-cell *matHeaderCellDef>פעולות</th>
         <td mat-cell *matCellDef="let org">
+          <button mat-icon-button color="primary" (click)="openEditDialog(org)" title="עריכה">
+            <mat-icon>edit</mat-icon>
+          </button>
+
           <button mat-icon-button [color]="org.license?.status === 'SUSPENDED' ? 'primary' : 'warn'"
                   (click)="toggleSuspend(org)"
                   [title]="org.license?.status === 'SUSPENDED' ? reactivateLabel : suspendLabel">

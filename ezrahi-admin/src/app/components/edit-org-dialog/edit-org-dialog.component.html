@@ -1,0 +1,56 @@
+<h2 mat-dialog-title>עריכת ארגון</h2>
+
+<mat-dialog-content>
+  @if (errorMessage()) {
+    <div class="error-banner">{{ errorMessage() }}</div>
+  }
+
+  <form [formGroup]="editForm" class="dialog-form">
+    <div class="id-line">
+      <span class="id-label">מזהה:</span>
+      <code>{{ data.org.orgId }}</code>
+    </div>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>שם הארגון</mat-label>
+      <input matInput formControlName="name" />
+      <mat-error>נדרש שם של 3 תווים לפחות</mat-error>
+    </mat-form-field>
+
+    <div class="row">
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>סטטוס רישיון</mat-label>
+        <mat-select formControlName="licenseStatus">
+          <mat-option value="ACTIVE">פעיל</mat-option>
+          <mat-option value="TRIAL">ניסיון</mat-option>
+          <mat-option value="SUSPENDED">מושהה</mat-option>
+          <mat-option value="EXPIRED">פג תוקף</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>מכסת אירועים במקביל</mat-label>
+        <input matInput formControlName="maxActiveEvents" type="number" min="1" />
+        <mat-error>נדרש מספר של 1 לפחות</mat-error>
+      </mat-form-field>
+    </div>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>הרישיון בתוקף עד</mat-label>
+      <input matInput [matDatepicker]="picker" formControlName="validUntilDate" />
+      <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
+      <mat-datepicker #picker></mat-datepicker>
+    </mat-form-field>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="onCancel()" [disabled]="isSubmitting()">ביטול</button>
+  <button mat-flat-button color="primary" (click)="onSubmit()" [disabled]="editForm.invalid || isSubmitting()">
+    @if (isSubmitting()) {
+      <mat-spinner diameter="20"></mat-spinner>
+    } @else {
+      שמירה
+    }
+  </button>
+</mat-dialog-actions>
