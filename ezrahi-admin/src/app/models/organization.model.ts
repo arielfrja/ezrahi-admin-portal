@@ -5,6 +5,8 @@ export interface OrganizationLicense {
 }
 
 export interface Organization {
+  /** Firestore document ID (manual slug or auto-ID). Single source of truth —
+      not duplicated as a field inside the document. */
   orgId: string;
   name: string;
   createdAt: unknown;
@@ -17,7 +19,8 @@ export interface Organization {
 }
 
 export interface RegisterOrgRequest {
-  orgId: string;
+  /** Optional manual slug. Omitted/empty => backend generates an auto-ID. */
+  orgId?: string;
   name: string;
   adminEmail: string;
   adminPassword?: string;

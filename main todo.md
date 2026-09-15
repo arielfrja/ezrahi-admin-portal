@@ -96,13 +96,13 @@ To prevent common errors produced by medium-tier LLMs:
 
 &#x20; ```
 
-\* \*\*Collection:\*\* `/organizations/{orgId}`
+\* \*\*Collection:\*\* `/organizations/{orgId}` (Document ID = manual slug when provided, otherwise Firestore auto-ID)
 
 &#x20; ```typescript
 
 &#x20; {
 
-&#x20;   orgId: string;               // e.g. "org\_bnei\_akiva" (Document ID)
+&#x20;   // No stored orgId field — the Document ID is the single source of truth.
 
 &#x20;   name: string;                // e.g. "בני עקיבא - מחוז מרכז"
 
@@ -222,7 +222,7 @@ const auth = admin.auth();
 
 interface CreateOrgPayload {
 
-&#x20; orgId: string;
+&#x20; orgId?: string; // Optional manual slug; omitted/empty => auto-ID
 
 &#x20; name: string;
 
@@ -268,9 +268,9 @@ export const registerOrganization = functions.https.onCall(async (request) => {
 
 
 
-&#x20; // 2. Validate inputs
+&#x20; // 2. Validate inputs (orgId is optional — manual slug or auto-ID)
 
-&#x20; if (!data.orgId || !data.name || !data.adminEmail) {
+&#x20; if (!data.name || !data.adminEmail) {
 
 &#x20;   throw new functions.https.HttpsError("invalid-argument", "Missing required fields.");
 
@@ -278,19 +278,37 @@ export const registerOrganization = functions.https.onCall(async (request) => {
 
 
 
-&#x20; const cleanOrgId = data.orgId.trim().toLowerCase().replace(/\[^a-z0-9\_]/g, "\_");
+&#x20; // 3. Resolve the document reference: manual slug or auto-ID
 
+&#x20; let orgRef;
 
+&#x20; let finalOrgId: string;
 
-&#x20; // 3. Check if org already exists
+&#x20; const manualSlug = data.orgId?.trim().toLowerCase();
 
-&#x20; const orgRef = db.collection("organizations").doc(cleanOrgId);
+&#x20; if (manualSlug) {
 
-&#x20; const existingOrg = await orgRef.get();
+&#x20;   const cleanOrgId = manualSlug.replace(/\[^a-z0-9\_-]/g, "\_");
 
-&#x20; if (existingOrg.exists) {
+&#x20;   const candidateRef = db.collection("organizations").doc(cleanOrgId);
 
-&#x20;   throw new functions.https.HttpsError("already-exists", `Organization ID ${cleanOrgId} already exists.`);
+&#x20;   const existingOrg = await candidateRef.get();
+
+&#x20;   if (existingOrg.exists) {
+
+&#x20;     throw new functions.https.HttpsError("already-exists", `Organization ID ${cleanOrgId} already exists.`);
+
+&#x20;   }
+
+&#x20;   orgRef = candidateRef;
+
+&#x20;   finalOrgId = cleanOrgId;
+
+&#x20; } else {
+
+&#x20;   orgRef = db.collection("organizations").doc();
+
+&#x20;   finalOrgId = orgRef.id;
 
 &#x20; }
 
@@ -334,11 +352,9 @@ export const registerOrganization = functions.https.onCall(async (request) => {
 
 
 
-&#x20; // 5. Write Organization document to Firestore
+&#x20; // 5. Write Organization document to Firestore (no stored orgId field)
 
 &#x20; const newOrg = {
-
-&#x20;   orgId: cleanOrgId,
 
 &#x20;   name: data.name,
 
@@ -372,7 +388,7 @@ export const registerOrganization = functions.https.onCall(async (request) => {
 
 
 
-&#x20; return { success: true, orgId: cleanOrgId, adminUid };
+&#x20; return { success: true, orgId: finalOrgId, adminUid };
 
 });
 
@@ -510,7 +526,7 @@ export interface OrganizationLicense {
 
 export interface Organization {
 
-&#x20; orgId: string;
+&#x20; orgId: string; // Firestore Document ID (manual slug or auto-ID), mapped client-side — not stored as a field.
 
 &#x20; name: string;
 
@@ -534,7 +550,7 @@ export interface Organization {
 
 export interface RegisterOrgRequest {
 
-&#x20; orgId: string;
+&#x20; orgId?: string; // Optional manual slug; omitted => backend auto-ID
 
 &#x20; name: string;
 
@@ -1846,7 +1862,9 @@ export class RegisterOrgDialogComponent {
 
 &#x20;     name: \['', \[Validators.required, Validators.minLength(3)]],
 
-&#x20;     orgId: \['', \[Validators.required, Validators.pattern(/^\[a-z0-9\_]+$/)]],
+&#x20;     // Optional manual slug; empty => backend auto-generates the doc ID.
+
+&#x20;     orgId: \['', \[Validators.pattern(/^\[a-z0-9\_-]+$/)]],
 
 &#x20;     adminEmail: \['', \[Validators.required, Validators.email]],
 
@@ -1864,21 +1882,21 @@ export class RegisterOrgDialogComponent {
 
 
 
-&#x20; // Auto-fill orgId slug when name changes
+&#x20; // Suggest a close alternative when the requested slug is taken (e.g. demo -> demo24332)
 
-&#x20; onNameBlur(): void {
+&#x20; private suggestId(base: string): string {
 
-&#x20;   const currentSlug = this.orgForm.get('orgId')?.value;
+&#x20;   const suffix = Math.floor(10000 + Math.random() \* 90000);
 
-&#x20;   if (!currentSlug) {
+&#x20;   return `${base}${suffix}`;
 
-&#x20;     const name = this.orgForm.get('name')?.value || '';
+&#x20; }
 
-&#x20;     const autoSlug = name.trim().toLowerCase().replace(/\[^a-z0-9]/g, '\_');
 
-&#x20;     this.orgForm.patchValue({ orgId: autoSlug });
 
-&#x20;   }
+&#x20; private isAlreadyExists(err: any): boolean {
+
+&#x20;   return err?.code === 'functions/already-exists';
 
 &#x20; }
 
@@ -1898,13 +1916,15 @@ export class RegisterOrgDialogComponent {
 
 &#x20;   const val = this.orgForm.value;
 
+&#x20;   const manualSlug = (val.orgId as string)?.trim() || undefined;
+
 &#x20;   try {
 
 &#x20;     await this.orgService.registerOrganization({
 
 &#x20;       name: val.name,
 
-&#x20;       orgId: val.orgId,
+&#x20;       orgId: manualSlug,
 
 &#x20;       adminEmail: val.adminEmail,
 
@@ -1920,11 +1940,23 @@ export class RegisterOrgDialogComponent {
 
 
 
-&#x20;     this.dialogRef.close({ name: val.name, orgId: val.orgId });
+&#x20;     this.dialogRef.close({ name: val.name, orgId: manualSlug ?? '' });
 
 &#x20;   } catch (err: any) {
 
-&#x20;     this.errorMessage.set(err.message || 'Failed to create organization');
+&#x20;     if (manualSlug && this.isAlreadyExists(err)) {
+
+&#x20;       const suggestion = this.suggestId(manualSlug);
+
+&#x20;       this.orgForm.patchValue({ orgId: suggestion });
+
+&#x20;       this.errorMessage.set('Slug taken — suggested an alternative, edit or submit again.');
+
+&#x20;     } else {
+
+&#x20;       this.errorMessage.set(err.message || 'Failed to create organization');
+
+&#x20;     }
 
 &#x20;   } finally {
 
@@ -1972,7 +2004,7 @@ export class RegisterOrgDialogComponent {
 
 &#x20;     <mat-label>Organization Name</mat-label>
 
-&#x20;     <input matInput formControlName="name" placeholder="e.g. Bnei Akiva Central" (blur)="onNameBlur()" />
+&#x20;     <input matInput formControlName="name" placeholder="e.g. Bnei Akiva Central" />
 
 &#x20;   </mat-form-field>
 
@@ -1980,11 +2012,11 @@ export class RegisterOrgDialogComponent {
 
 &#x20;   <mat-form-field appearance="outline" class="full-width">
 
-&#x20;     <mat-label>Unique Identifier (Slug)</mat-label>
+&#x20;     <mat-label>Identifier (Slug, optional)</mat-label>
 
-&#x20;     <input matInput formControlName="orgId" placeholder="e.g. bnei\_akiva" />
+&#x20;     <input matInput formControlName="orgId" placeholder="e.g. bnei-akiva" />
 
-&#x20;     <mat-hint>Lowercase English letters, numbers and underscores only</mat-hint>
+&#x20;     <mat-hint>Empty = auto-ID. Otherwise lowercase English, numbers, underscores and hyphens</mat-hint>
 
 &#x20;   </mat-form-field>
 

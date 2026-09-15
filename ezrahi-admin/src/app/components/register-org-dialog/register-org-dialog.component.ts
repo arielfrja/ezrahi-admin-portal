@@ -45,7 +45,8 @@ export class RegisterOrgDialogComponent {
 
     this.orgForm = this.fb.group({
       name: ['', [Validators.required, Validators.minLength(3)]],
-      orgId: ['', [Validators.required, Validators.pattern(/^[a-z0-9_]+$/)]],
+      // Optional manual slug; empty => backend auto-generates the doc ID.
+      orgId: ['', [Validators.pattern(/^[a-z0-9_-]+$/)]],
       adminEmail: ['', [Validators.required, Validators.email]],
       adminPassword: ['ROTATED-SECRET-REMOVED', [Validators.required, Validators.minLength(6)]],
       licenseStatus: ['ACTIVE', Validators.required],
@@ -54,14 +55,17 @@ export class RegisterOrgDialogComponent {
     });
   }
 
-  // Auto-fill orgId slug when name changes
-  onNameBlur(): void {
-    const currentSlug = this.orgForm.get('orgId')?.value;
-    if (!currentSlug) {
-      const name = this.orgForm.get('name')?.value || '';
-      const autoSlug = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
-      this.orgForm.patchValue({ orgId: autoSlug });
-    }
+  /** Suggest a close alternative when the requested slug is taken. */
+  private suggestId(base: string): string {
+    const suffix = Math.floor(10000 + Math.random() * 90000);
+    return `${base}${suffix}`;
+  }
+
+  private isAlreadyExists(err: unknown): boolean {
+    return (
+      typeof err === 'object' && err !== null && 'code' in err &&
+      (err as { code: unknown }).code === 'functions/already-exists'
+    );
   }
 
   async onSubmit(): Promise<void> {
@@ -71,10 +75,11 @@ export class RegisterOrgDialogComponent {
     this.errorMessage.set(null);
 
     const val = this.orgForm.value;
+    const manualSlug = (val.orgId as string)?.trim() || undefined;
     try {
       await this.orgService.registerOrganization({
         name: val.name,
-        orgId: val.orgId,
+        orgId: manualSlug,
         adminEmail: val.adminEmail,
         adminPassword: val.adminPassword,
         licenseStatus: val.licenseStatus,
@@ -82,10 +87,16 @@ export class RegisterOrgDialogComponent {
         maxActiveEvents: val.maxActiveEvents
       });
 
-      this.dialogRef.close({ name: val.name, orgId: val.orgId });
+      this.dialogRef.close({ name: val.name, orgId: manualSlug ?? '' });
     } catch (err: unknown) {
-      const detail = err instanceof Error ? err.message : '';
-      this.errorMessage.set('רישום הארגון נכשל.' + (detail ? ` ${detail}` : ''));
+      if (manualSlug && this.isAlreadyExists(err)) {
+        const suggestion = this.suggestId(manualSlug);
+        this.orgForm.patchValue({ orgId: suggestion });
+        this.errorMessage.set('המזהה שבחרת תפוס. הכנסנו הצעה חלופית — ניתן לערוך אותה או ללחוץ רישום שוב.');
+      } else {
+        const detail = err instanceof Error ? err.message : '';
+        this.errorMessage.set('רישום הארגון נכשל.' + (detail ? ` ${detail}` : ''));
+      }
     } finally {
       this.isSubmitting.set(false);
     }
