@@ -1,0 +1,78 @@
+<mat-toolbar color="primary" class="admin-toolbar">
+  <span>Ezrahi Super-Admin</span>
+  <span class="spacer"></span>
+  <button mat-icon-button (click)="logout()" title="Logout">
+    <mat-icon>logout</mat-icon>
+  </button>
+</mat-toolbar>
+
+<div class="content-container">
+  <div class="header-action-bar">
+    <div>
+      <h2>Registered Organizations</h2>
+      <p class="subtitle">Register, license, and manage platform tenants</p>
+    </div>
+    <button mat-flat-button color="primary" (click)="openRegisterDialog()">
+      <mat-icon>add</mat-icon>
+      Register Organization
+    </button>
+  </div>
+
+  <div class="mat-elevation-z2 table-wrapper">
+    <table mat-table [dataSource]="organizations()">
+
+      <!-- Name Column -->
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef> Organization Name </th>
+        <td mat-cell *matCellDef="let org"> <strong>{{ org.name }}</strong> </td>
+      </ng-container>
+
+      <!-- Org ID Column -->
+      <ng-container matColumnDef="orgId">
+        <th mat-header-cell *matHeaderCellDef> Identifier (Slug) </th>
+        <td mat-cell *matCellDef="let org"> <code>{{ org.orgId }}</code> </td>
+      </ng-container>
+
+      <!-- Status Column -->
+      <ng-container matColumnDef="status">
+        <th mat-header-cell *matHeaderCellDef> License Status </th>
+        <td mat-cell *matCellDef="let org">
+          <span class="status-badge" [ngClass]="org.license?.status">
+            {{ org.license?.status }}
+          </span>
+        </td>
+      </ng-container>
+
+      <!-- Valid Until Column -->
+      <ng-container matColumnDef="validUntil">
+        <th mat-header-cell *matHeaderCellDef> Valid Until </th>
+        <td mat-cell *matCellDef="let org"> {{ formatDate(org.license?.validUntil) }} </td>
+      </ng-container>
+
+      <!-- Max Events Column -->
+      <ng-container matColumnDef="maxEvents">
+        <th mat-header-cell *matHeaderCellDef> Concurrency Limit </th>
+        <td mat-cell *matCellDef="let org"> {{ org.license?.maxActiveEvents }} Events </td>
+      </ng-container>
+
+      <!-- Actions Column -->
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef> Actions </th>
+        <td mat-cell *matCellDef="let org">
+          <button mat-icon-button [color]="org.license?.status === 'SUSPENDED' ? 'primary' : 'warn'"
+                  (click)="toggleSuspend(org)"
+                  [title]="org.license?.status === 'SUSPENDED' ? 'Reactivate' : 'Suspend'">
+            <mat-icon>{{ org.license?.status === 'SUSPENDED' ? 'play_circle' : 'pause_circle' }}</mat-icon>
+          </button>
+
+          <button mat-icon-button color="warn" (click)="deleteOrg(org)" title="Delete Permanently">
+            <mat-icon>delete_forever</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+    </table>
+  </div>
+</div>

@@ -1,0 +1,66 @@
+<h2 mat-dialog-title>Register New Organization</h2>
+
+<mat-dialog-content>
+  @if (errorMessage()) {
+    <div class="error-banner">{{ errorMessage() }}</div>
+  }
+
+  <form [formGroup]="orgForm" class="dialog-form">
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Organization Name</mat-label>
+      <input matInput formControlName="name" placeholder="e.g. Bnei Akiva Central" (blur)="onNameBlur()" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Unique Identifier (Slug)</mat-label>
+      <input matInput formControlName="orgId" placeholder="e.g. bnei_akiva" />
+      <mat-hint>Lowercase English letters, numbers and underscores only</mat-hint>
+    </mat-form-field>
+
+    <div class="row">
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>Admin Initial Email</mat-label>
+        <input matInput formControlName="adminEmail" type="email" placeholder="manager@org.org.il" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>Initial Temp Password</mat-label>
+        <input matInput formControlName="adminPassword" type="text" />
+      </mat-form-field>
+    </div>
+
+    <div class="row">
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>License Status</mat-label>
+        <mat-select formControlName="licenseStatus">
+          <mat-option value="ACTIVE">Active</mat-option>
+          <mat-option value="TRIAL">Trial</mat-option>
+          <mat-option value="SUSPENDED">Suspended</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>Concurrent Event Quota</mat-label>
+        <input matInput formControlName="maxActiveEvents" type="number" min="1" />
+      </mat-form-field>
+    </div>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>License Valid Until</mat-label>
+      <input matInput [matDatepicker]="picker" formControlName="validUntilDate" />
+      <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
+      <mat-datepicker #picker></mat-datepicker>
+    </mat-form-field>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="onCancel()" [disabled]="isSubmitting()">Cancel</button>
+  <button mat-flat-button color="primary" (click)="onSubmit()" [disabled]="orgForm.invalid || isSubmitting()">
+    @if (isSubmitting()) {
+      <mat-spinner diameter="20"></mat-spinner>
+    } @else {
+      Register
+    }
+  </button>
+</mat-dialog-actions>

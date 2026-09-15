@@ -1,0 +1,12 @@
+# Sensitive local Firebase web config snippet (do not commit)
+firebase.config.js
+
+# Dev server logs
+logs/ng-serve.log
+logs/ng-serve.err.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json

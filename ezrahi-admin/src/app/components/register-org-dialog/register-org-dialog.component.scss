@@ -1,0 +1,29 @@
+.dialog-form {
+  padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.full-width {
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.row {
+  display: flex;
+  gap: 1rem;
+}
+
+.half-width {
+  flex: 1;
+  margin-bottom: 0.75rem;
+}
+
+.error-banner {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}

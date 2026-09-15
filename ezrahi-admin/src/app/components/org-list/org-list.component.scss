@@ -1,0 +1,63 @@
+.spacer {
+  flex: 1 1 auto;
+}
+
+.content-container {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.header-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+
+  h2 {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 500;
+  }
+
+  .subtitle {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.9rem;
+  }
+}
+
+.table-wrapper {
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+table {
+  width: 100%;
+}
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+
+  &.ACTIVE {
+    background-color: #dcfce7;
+    color: #15803d;
+  }
+  &.TRIAL {
+    background-color: #fef9c3;
+    color: #a16207;
+  }
+  &.SUSPENDED {
+    background-color: #fee2e2;
+    color: #b91c1c;
+  }
+  &.EXPIRED {
+    background-color: #f1f5f9;
+    color: #64748b;
+  }
+}
