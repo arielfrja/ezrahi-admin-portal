@@ -1,4 +1,4 @@
-// Material 3 theme (Angular Material 20 API).
+// Material 3 theme (Angular Material 20 API). Heebo: Roboto has no Hebrew glyphs.
 @use '@angular/material' as mat;
 
 html {
@@ -8,7 +8,7 @@ html {
       primary: mat.$azure-palette,
       tertiary: mat.$blue-palette,
     ),
-    typography: Roboto,
+    typography: Heebo,
     density: 0,
   ));
 }
@@ -19,6 +19,6 @@ html, body {
 
 body {
   margin: 0;
-  font-family: Roboto, "Helvetica Neue", sans-serif;
+  font-family: Heebo, "Helvetica Neue", sans-serif;
   background-color: #f8fafc;
 }

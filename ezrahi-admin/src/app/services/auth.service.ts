@@ -32,12 +32,23 @@ export class AuthService {
   }
 
   async login(email: string, pass: string): Promise<void> {
-    const res = await signInWithEmailAndPassword(this.fb.auth, email, pass);
-    const adminRef = doc(this.fb.firestore, 'system_admins', res.user.uid);
-    const adminSnap = await getDoc(adminRef);
-    if (!adminSnap.exists()) {
-      await signOut(this.fb.auth);
-      throw new Error('Access denied: You are not registered as a Super-Admin.');
+    this.isLoading.set(true);
+    try {
+      const res = await signInWithEmailAndPassword(this.fb.auth, email, pass);
+      const adminRef = doc(this.fb.firestore, 'system_admins', res.user.uid);
+      const adminSnap = await getDoc(adminRef);
+      if (!adminSnap.exists()) {
+        await signOut(this.fb.auth);
+        throw new Error('Access denied: You are not registered as a Super-Admin.');
+      }
+      // Sync signals immediately: the onAuthStateChanged callback resolves
+      // asynchronously (it awaits getDoc), so without this the route guard
+      // can run before the signals reflect the signed-in super-admin and
+      // bounce back to /login despite a successful login.
+      this.currentUser.set(res.user);
+      this.isSuperAdmin.set(true);
+    } finally {
+      this.isLoading.set(false);
     }
   }
 

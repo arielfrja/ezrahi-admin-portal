@@ -1,8 +1,8 @@
 <div class="login-wrapper">
   <mat-card class="login-card">
     <mat-card-header>
-      <mat-card-title>Ezrahi Admin</mat-card-title>
-      <mat-card-subtitle>Super-Admin Portal Login</mat-card-subtitle>
+      <mat-card-title>ניהול Ezrahi</mat-card-title>
+      <mat-card-subtitle>כניסת סופר-אדמין</mat-card-subtitle>
     </mat-card-header>
 
     <mat-card-content>
@@ -14,20 +14,22 @@
 
       <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
         <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Email</mat-label>
+          <mat-label>דוא״ל</mat-label>
           <input matInput formControlName="email" type="email" autocomplete="email" placeholder="admin@ezrahi.app" />
+          <mat-error>כתובת דוא״ל לא תקינה</mat-error>
         </mat-form-field>
 
         <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Password</mat-label>
+          <mat-label>סיסמה</mat-label>
           <input matInput formControlName="password" type="password" autocomplete="current-password" />
+          <mat-error>הסיסמה חייבת להכיל 6 תווים לפחות</mat-error>
         </mat-form-field>
 
         <button mat-flat-button color="primary" class="full-width submit-btn" [disabled]="isSubmitting() || loginForm.invalid">
           @if (isSubmitting()) {
             <mat-spinner diameter="20"></mat-spinner>
           } @else {
-            Sign In
+            התחברות
           }
         </button>
       </form>

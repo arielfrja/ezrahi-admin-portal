@@ -84,8 +84,8 @@ export class RegisterOrgDialogComponent {
 
       this.dialogRef.close({ name: val.name, orgId: val.orgId });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to create organization';
-      this.errorMessage.set(message);
+      const detail = err instanceof Error ? err.message : '';
+      this.errorMessage.set('רישום הארגון נכשל.' + (detail ? ` ${detail}` : ''));
     } finally {
       this.isSubmitting.set(false);
     }

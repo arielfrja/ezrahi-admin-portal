@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, Inject, LOCALE_ID, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { OrganizationService } from '../../services/organization.service';
 import { AuthService } from '../../services/auth.service';
@@ -14,6 +14,14 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 
 import { RegisterOrgDialogComponent } from '../register-org-dialog/register-org-dialog.component';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
+
+/** License status codes mapped to Hebrew display labels. Data stays in English. */
+export const LICENSE_STATUS_LABELS: Record<Organization['license']['status'], string> = {
+  ACTIVE: 'פעיל',
+  TRIAL: 'ניסיון',
+  SUSPENDED: 'מושהה',
+  EXPIRED: 'פג תוקף',
+};
 
 @Component({
   selector: 'app-org-list',
@@ -39,14 +47,31 @@ export class OrgListComponent implements OnInit {
     private orgService: OrganizationService,
     private auth: AuthService,
     private dialog: MatDialog,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    @Inject(LOCALE_ID) private locale: string
   ) {}
 
   ngOnInit(): void {
     this.orgService.getOrganizations().subscribe({
       next: (data) => this.organizations.set(data),
-      error: (err: Error) => this.snackBar.open('Error loading organizations: ' + err.message, 'Close', { duration: 4000 })
+      error: (err: Error) => this.snackBar.open(
+        'שגיאה בטעינת הארגונים: ' + err.message,
+        'סגור',
+        { duration: 4000 }
+      )
     });
+  }
+
+  statusLabel(status: Organization['license']['status']): string {
+    return LICENSE_STATUS_LABELS[status] ?? status;
+  }
+
+  reactivateLabel = 'הפעלה מחדש';
+  suspendLabel = 'השהיה';
+
+  eventsQuotaLabel(n: number | undefined): string {
+    if (n === 1) return 'אירוע אחד';
+    return `${n ?? 0} אירועים`;
   }
 
   openRegisterDialog(): void {
@@ -56,7 +81,7 @@ export class OrgListComponent implements OnInit {
 
     dialogRef.afterClosed().subscribe((result: { name: string; orgId: string } | undefined) => {
       if (result) {
-        this.snackBar.open(`Organization "${result.name}" created successfully.`, 'OK', { duration: 3000 });
+        this.snackBar.open('הארגון נוצר בהצלחה.', 'אישור', { duration: 3000 });
       }
     });
   }
@@ -68,8 +93,8 @@ export class OrgListComponent implements OnInit {
 
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: isSuspended ? 'Reactivate Organization' : 'Suspend Organization',
-        message: `Are you sure you want to change the status of ${org.name} to ${newStatus}?`
+        title: isSuspended ? 'הפעלה מחדש של הארגון' : 'השהיית הארגון',
+        message: isSuspended ? 'להפעיל מחדש את הארגון?' : 'להשהות את הארגון?'
       }
     });
 
@@ -77,10 +102,10 @@ export class OrgListComponent implements OnInit {
       if (confirmed) {
         try {
           await this.orgService.updateLicenseStatus(org.orgId, newStatus);
-          this.snackBar.open(`Organization is now ${newStatus}`, 'OK', { duration: 2500 });
+          this.snackBar.open('הסטטוס עודכן בהצלחה.', 'אישור', { duration: 2500 });
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Update failed.';
-          this.snackBar.open(message, 'Close', { duration: 3500 });
+          const message = err instanceof Error ? err.message : 'הפעולה נכשלה.';
+          this.snackBar.open(message, 'סגור', { duration: 3500 });
         }
       }
     });
@@ -90,8 +115,8 @@ export class OrgListComponent implements OnInit {
   deleteOrg(org: Organization): void {
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: 'Delete Organization',
-        message: `Are you sure you want to permanently delete ${org.name} (${org.orgId})? All data will be removed.`
+        title: 'מחיקת הארגון',
+        message: 'למחוק את הארגון לצמיתות? לא ניתן לבטל פעולה זו.'
       }
     });
 
@@ -99,22 +124,22 @@ export class OrgListComponent implements OnInit {
       if (confirmed) {
         try {
           await this.orgService.deleteOrganization(org.orgId);
-          this.snackBar.open('Organization deleted successfully', 'OK', { duration: 2500 });
+          this.snackBar.open('הארגון נמחק בהצלחה.', 'אישור', { duration: 2500 });
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Delete failed.';
-          this.snackBar.open(message, 'Close', { duration: 3500 });
+          const message = err instanceof Error ? err.message : 'הפעולה נכשלה.';
+          this.snackBar.open(message, 'סגור', { duration: 3500 });
         }
       }
     });
   }
 
   formatDate(timestamp: unknown): string {
-    if (!timestamp) return 'N/A';
+    if (!timestamp) return 'לא זמין';
     if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp &&
         typeof (timestamp as { toDate: unknown }).toDate === 'function') {
-      return (timestamp as { toDate: () => Date }).toDate().toLocaleDateString('he-IL');
+      return (timestamp as { toDate: () => Date }).toDate().toLocaleDateString(this.locale);
     }
-    return new Date(timestamp as string | number | Date).toLocaleDateString('he-IL');
+    return new Date(timestamp as string | number | Date).toLocaleDateString(this.locale);
   }
 
   logout(): void {

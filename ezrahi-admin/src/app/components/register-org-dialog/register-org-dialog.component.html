@@ -1,4 +1,4 @@
-<h2 mat-dialog-title>Register New Organization</h2>
+<h2 mat-dialog-title>רישום ארגון חדש</h2>
 
 <mat-dialog-content>
   @if (errorMessage()) {
@@ -7,46 +7,51 @@
 
   <form [formGroup]="orgForm" class="dialog-form">
     <mat-form-field appearance="outline" class="full-width">
-      <mat-label>Organization Name</mat-label>
-      <input matInput formControlName="name" placeholder="e.g. Bnei Akiva Central" (blur)="onNameBlur()" />
+      <mat-label>שם הארגון</mat-label>
+      <input matInput formControlName="name" placeholder="לדוגמה: בני עקיבא מחוז מרכז" (blur)="onNameBlur()" />
+      <mat-error>נדרש שם של 3 תווים לפחות</mat-error>
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="full-width">
-      <mat-label>Unique Identifier (Slug)</mat-label>
-      <input matInput formControlName="orgId" placeholder="e.g. bnei_akiva" />
-      <mat-hint>Lowercase English letters, numbers and underscores only</mat-hint>
+      <mat-label>מזהה ייחודי (Slug)</mat-label>
+      <input matInput formControlName="orgId" placeholder="לדוגמה: bnei_akiva" />
+      <mat-hint>אותיות לטיניות קטנות, ספרות וקו תחתון בלבד</mat-hint>
+      <mat-error>מזהה לא תקין — אותיות קטנות, ספרות וקו תחתון בלבד</mat-error>
     </mat-form-field>
 
     <div class="row">
       <mat-form-field appearance="outline" class="half-width">
-        <mat-label>Admin Initial Email</mat-label>
+        <mat-label>דוא״ל מנהל ראשוני</mat-label>
         <input matInput formControlName="adminEmail" type="email" placeholder="manager@org.org.il" />
+        <mat-error>כתובת דוא״ל לא תקינה</mat-error>
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="half-width">
-        <mat-label>Initial Temp Password</mat-label>
+        <mat-label>סיסמה זמנית</mat-label>
         <input matInput formControlName="adminPassword" type="text" />
+        <mat-error>הסיסמה חייבת להכיל 6 תווים לפחות</mat-error>
       </mat-form-field>
     </div>
 
     <div class="row">
       <mat-form-field appearance="outline" class="half-width">
-        <mat-label>License Status</mat-label>
+        <mat-label>סטטוס רישיון</mat-label>
         <mat-select formControlName="licenseStatus">
-          <mat-option value="ACTIVE">Active</mat-option>
-          <mat-option value="TRIAL">Trial</mat-option>
-          <mat-option value="SUSPENDED">Suspended</mat-option>
+          <mat-option value="ACTIVE">פעיל</mat-option>
+          <mat-option value="TRIAL">ניסיון</mat-option>
+          <mat-option value="SUSPENDED">מושהה</mat-option>
         </mat-select>
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="half-width">
-        <mat-label>Concurrent Event Quota</mat-label>
+        <mat-label>מכסת אירועים במקביל</mat-label>
         <input matInput formControlName="maxActiveEvents" type="number" min="1" />
+        <mat-error>נדרש מספר של 1 לפחות</mat-error>
       </mat-form-field>
     </div>
 
     <mat-form-field appearance="outline" class="full-width">
-      <mat-label>License Valid Until</mat-label>
+      <mat-label>הרישיון בתוקף עד</mat-label>
       <input matInput [matDatepicker]="picker" formControlName="validUntilDate" />
       <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
       <mat-datepicker #picker></mat-datepicker>
@@ -55,12 +60,12 @@
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">
-  <button mat-button (click)="onCancel()" [disabled]="isSubmitting()">Cancel</button>
+  <button mat-button (click)="onCancel()" [disabled]="isSubmitting()">ביטול</button>
   <button mat-flat-button color="primary" (click)="onSubmit()" [disabled]="orgForm.invalid || isSubmitting()">
     @if (isSubmitting()) {
       <mat-spinner diameter="20"></mat-spinner>
     } @else {
-      Register
+      רישום
     }
   </button>
 </mat-dialog-actions>
