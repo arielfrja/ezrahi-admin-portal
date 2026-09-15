@@ -28,5 +28,12 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: Check deploy token
+        run: |
+          if [ -z "${{ secrets.FIREBASE_TOKEN }}" ]; then
+            echo "::error::FIREBASE_TOKEN secret is missing. Run 'firebase login:ci', then add the token as a repo secret named FIREBASE_TOKEN (Settings -> Secrets -> Actions)."
+            exit 1
+          fi
+
       - name: Deploy to Firebase Hosting
         run: npx -y firebase-tools@15 deploy --only hosting:ezrahi-admin-portal --project ezrahi --non-interactive --token ${{ secrets.FIREBASE_TOKEN }}

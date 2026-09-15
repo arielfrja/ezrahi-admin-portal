@@ -328,7 +328,7 @@ export const registerOrganization = functions.https.onCall(async (request) => {
 
 &#x20;   if (error.code === "auth/user-not-found") {
 
-&#x20;     const tempPassword = data.adminPassword || "ROTATED-SECRET-REMOVED";
+&#x20;     const tempPassword = data.adminPassword || randomBytes(18).toString('base64'); // random; reset-email sent by portal
 
 &#x20;     const newUser = await auth.createUser({
 
@@ -1868,7 +1868,7 @@ export class RegisterOrgDialogComponent {
 
 &#x20;     adminEmail: \['', \[Validators.required, Validators.email]],
 
-&#x20;     adminPassword: \['ROTATED-SECRET-REMOVED', \[Validators.required, Validators.minLength(6)]],
+&#x20;     adminPassword: \['', \[Validators.minLength(6)]], // optional; empty => random + reset-email
 
 &#x20;     licenseStatus: \['ACTIVE', Validators.required],
 
