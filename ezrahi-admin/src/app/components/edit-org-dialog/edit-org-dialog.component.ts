@@ -16,6 +16,8 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { Observable, map, startWith } from 'rxjs';
 import { Organization } from '../../models/organization.model';
 import { AdminUserInfo, OrganizationService } from '../../services/organization.service';
+import { FirebaseService } from '../../services/firebase.service';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 
 export interface EditOrgDialogData {
@@ -72,6 +74,7 @@ export class EditOrgDialogComponent implements OnInit {
     private dialogRef: MatDialogRef<EditOrgDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: EditOrgDialogData,
     private orgService: OrganizationService,
+    private firebase: FirebaseService,
     private dialog: MatDialog,
     private snackBar: MatSnackBar
   ) {
@@ -125,11 +128,17 @@ export class EditOrgDialogComponent implements OnInit {
       }
       this.userSearch.setValue('');
       this.inviteEmail = '';
-      this.snackBar.open(
-        res.created ? 'משתמש חדש הוזמן והוגדר כמנהל.' : 'המנהל נוסף לארגון.',
-        'אישור',
-        { duration: 2500 }
-      );
+      if (res.created) {
+        // New Auth user: email them a set-your-password link via Firebase's mailer.
+        try {
+          await sendPasswordResetEmail(this.firebase.auth, clean);
+          this.snackBar.open('משתמש חדש הוזמן ונשלח אליו דוא״ל להגדרת סיסמה.', 'אישור', { duration: 3000 });
+        } catch {
+          this.snackBar.open('המשתמש נוצר, אך שליחת הדוא״ל נכשלה.', 'סגור', { duration: 3500 });
+        }
+      } else {
+        this.snackBar.open('המנהל נוסף לארגון.', 'אישור', { duration: 2500 });
+      }
     } catch (err: unknown) {
       const detail = err instanceof Error ? err.message : '';
       this.snackBar.open('הוספת מנהל נכשלה.' + (detail ? ` ${detail}` : ''), 'סגור', { duration: 3500 });
