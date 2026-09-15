@@ -10,6 +10,7 @@ logs/.2a855c3c6dd85820a661033827bd8da32df754f4-audit.json
 # Firebase CLI noise (init was run in the wrong repo; backend owns Firebase config)
 firebase-debug.log
 database-debug.log
+.firebase/
 
 # OS / editor
 .DS_Store
