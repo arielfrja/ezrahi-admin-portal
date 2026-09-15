@@ -1,0 +1,8 @@
+{
+  "hosting": {
+    "site": "ezrahi-admin-portal",
+    "public": "ezrahi-admin/dist/ezrahi-admin/browser",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  }
+}
