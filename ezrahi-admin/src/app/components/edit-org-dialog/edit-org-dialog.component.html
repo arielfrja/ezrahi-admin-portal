@@ -42,6 +42,46 @@
       <mat-datepicker #picker></mat-datepicker>
     </mat-form-field>
   </form>
+
+  <div class="admins-section">
+    <h3>מנהלי הארגון</h3>
+
+    <mat-chip-set>
+      @for (uid of adminUids(); track uid) {
+        <mat-chip-row (removed)="removeAdmin(uid)" [disabled]="adminsBusy()">
+          {{ adminLabel(uid) }}
+          <button matChipRemove [disabled]="adminsBusy()" title="הסרה">
+            <mat-icon>cancel</mat-icon>
+          </button>
+        </mat-chip-row>
+      }
+      @if (adminUids().length === 0) {
+        <span class="no-admins">אין מנהלים משויכים</span>
+      }
+    </mat-chip-set>
+
+    <div class="row">
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>בחירה ממשתמשים קיימים</mat-label>
+        <input matInput [formControl]="userSearch" [matAutocomplete]="auto" placeholder="חיפוש לפי דוא״ל" />
+        <mat-autocomplete #auto="matAutocomplete" (optionSelected)="addAdmin($event.option.value)">
+          @for (u of filteredUsers | async; track u.uid) {
+            <mat-option [value]="u.email">{{ u.email }}</mat-option>
+          }
+        </mat-autocomplete>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>הזמנה לפי דוא״ל</mat-label>
+        <input matInput [(ngModel)]="inviteEmail" type="email" placeholder="new@org.org.il" />
+      </mat-form-field>
+    </div>
+
+    <button mat-stroked-button color="primary" (click)="addAdmin(inviteEmail)" [disabled]="adminsBusy() || !inviteEmail.trim()">
+      <mat-icon>person_add</mat-icon>
+      הוספה / הזמנה
+    </button>
+  </div>
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">

@@ -19,6 +19,19 @@ export interface UpdateOrgInfo {
   maxEvents?: number;
 }
 
+export interface AdminUserInfo {
+  uid: string;
+  email: string;
+  displayName: string;
+}
+
+export interface AddOrgAdminResult {
+  success: boolean;
+  uid: string;
+  email: string;
+  created: boolean;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -89,5 +102,25 @@ export class OrganizationService {
   async deleteOrganization(orgId: string): Promise<void> {
     const orgRef = doc(this.fb.firestore, 'organizations', orgId);
     await deleteDoc(orgRef);
+  }
+
+  // List Firebase Auth users (super-admin only, via Cloud Function)
+  async listUsers(): Promise<AdminUserInfo[]> {
+    const callFunction = httpsCallable(this.fb.functions, 'listUsers');
+    const result = await callFunction({});
+    return (result.data as { users: AdminUserInfo[] }).users ?? [];
+  }
+
+  // Add existing user or invite new one as org admin (via Cloud Function)
+  async addOrgAdmin(orgId: string, email: string): Promise<AddOrgAdminResult> {
+    const callFunction = httpsCallable(this.fb.functions, 'addOrgAdmin');
+    const result = await callFunction({ orgId, email });
+    return result.data as AddOrgAdminResult;
+  }
+
+  // Remove a UID from org admins (via Cloud Function)
+  async removeOrgAdmin(orgId: string, uid: string): Promise<void> {
+    const callFunction = httpsCallable(this.fb.functions, 'removeOrgAdmin');
+    await callFunction({ orgId, uid });
   }
 }
