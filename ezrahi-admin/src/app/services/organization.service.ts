@@ -7,10 +7,13 @@ import {
   updateDoc,
   deleteDoc,
   Timestamp,
+  query,
+  where,
+  getDocs,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { Observable } from 'rxjs';
-import { Organization, RegisterOrgRequest } from '../models/organization.model';
+import { Organization, RegisterOrgRequest, RegisterOrgResult } from '../models/organization.model';
 
 export interface UpdateOrgInfo {
   name?: string;
@@ -58,11 +61,20 @@ export class OrganizationService {
     });
   }
 
-  // Register via Cloud Function (creates Auth Admin user + Firestore doc)
-  async registerOrganization(payload: RegisterOrgRequest): Promise<unknown> {
+  // Register via Cloud Function (creates Auth Admin user + Firestore doc).
+  // Returns orgId + setupPasswordLink (Task 4.2: copy/share to the new admin).
+  async registerOrganization(payload: RegisterOrgRequest): Promise<RegisterOrgResult> {
     const callFunction = httpsCallable(this.fb.functions, 'registerOrganization');
     const result = await callFunction(payload);
-    return result.data;
+    return result.data as RegisterOrgResult;
+  }
+
+  /** Live count of ACTIVE events for an org (Task 4.1 quota column). */
+  async getActiveEventCount(orgId: string): Promise<number> {
+    const eventsRef = collection(this.fb.firestore, 'events');
+    const q = query(eventsRef, where('orgId', '==', orgId), where('status', '==', 'ACTIVE'));
+    const snap = await getDocs(q);
+    return snap.size;
   }
 
   // Update License / Status (Suspend / Reactivate)

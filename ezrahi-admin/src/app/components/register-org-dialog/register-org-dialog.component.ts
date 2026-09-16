@@ -53,7 +53,9 @@ export class RegisterOrgDialogComponent {
       name: ['', [Validators.required, Validators.minLength(3)]],
       // Optional manual slug; empty => backend auto-generates the doc ID.
       orgId: ['', [Validators.pattern(/^[a-z0-9_-]+$/)]],
+      adminFullName: ['', [Validators.minLength(2)]],
       adminEmail: ['', [Validators.required, Validators.email]],
+      adminPhone: ['', [Validators.pattern(/^[0-9+\-() ]{7,20}$/)]],
       // Optional: empty => backend generates a random password and the portal
       // emails the admin a set-your-password link after registration.
       adminPassword: ['', [Validators.minLength(6)]],
@@ -89,17 +91,23 @@ export class RegisterOrgDialogComponent {
     // 0 = unlimited (backend stores null).
     const quota = val.maxActiveEvents === 0 ? null : val.maxActiveEvents;
     try {
-      await this.orgService.registerOrganization({
+      const created = await this.orgService.registerOrganization({
         name: val.name,
         orgId: manualSlug,
         adminEmail: val.adminEmail,
+        adminFullName: (val.adminFullName as string)?.trim() || undefined,
+        adminPhone: (val.adminPhone as string)?.trim() || undefined,
         adminPassword: manualPassword,
         licenseStatus: val.licenseStatus,
         validUntilDate: new Date(val.validUntilDate).toISOString(),
         maxActiveEvents: quota
       });
 
-      this.dialogRef.close({ name: val.name, orgId: manualSlug ?? '' });
+      this.dialogRef.close({
+        name: val.name,
+        orgId: created.orgId ?? manualSlug ?? '',
+        setupPasswordLink: created.setupPasswordLink || '',
+      });
 
       // Auto-generated password: email the admin a set-your-password link.
       if (!manualPassword) {

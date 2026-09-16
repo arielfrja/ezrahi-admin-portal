@@ -41,8 +41,10 @@ export const LICENSE_STATUS_LABELS: Record<Organization['license']['status'], st
   styleUrls: ['./org-list.component.scss']
 })
 export class OrgListComponent implements OnInit {
-  displayedColumns: string[] = ['name', 'orgId', 'status', 'validUntil', 'maxEvents', 'actions'];
+  displayedColumns: string[] = ['name', 'orgId', 'admins', 'status', 'validUntil', 'activeEvents', 'maxEvents', 'actions'];
   organizations = signal<Organization[]>([]);
+  /** orgId -> live ACTIVE event count (Task 4.1). */
+  activeCounts = signal<Record<string, number>>({});
 
   constructor(
     private orgService: OrganizationService,
@@ -54,13 +56,27 @@ export class OrgListComponent implements OnInit {
 
   ngOnInit(): void {
     this.orgService.getOrganizations().subscribe({
-      next: (data) => this.organizations.set(data),
+      next: (data) => {
+        this.organizations.set(data);
+        // Refresh active-event counts (best-effort, cached per org).
+        for (const org of data) {
+          this.orgService.getActiveEventCount(org.orgId).then(
+            (n) => this.activeCounts.update((m) => ({ ...m, [org.orgId]: n })),
+            () => undefined,
+          );
+        }
+      },
       error: (err: Error) => this.snackBar.open(
         'שגיאה בטעינת הארגונים: ' + err.message,
         'סגור',
         { duration: 4000 }
       )
     });
+  }
+
+  activeCount(orgId: string): string {
+    const n = this.activeCounts()[orgId];
+    return n === undefined ? '…' : String(n);
   }
 
   statusLabel(status: Organization['license']['status']): string {
@@ -80,14 +96,32 @@ export class OrgListComponent implements OnInit {
 
   openRegisterDialog(): void {
     const dialogRef = this.dialog.open(RegisterOrgDialogComponent, {
-      width: '520px'
+      width: '560px'
     });
 
-    dialogRef.afterClosed().subscribe((result: { name: string; orgId: string } | undefined) => {
+    dialogRef.afterClosed().subscribe((result: { name: string; orgId: string; setupPasswordLink?: string } | undefined) => {
       if (result) {
-        this.snackBar.open('הארגון נוצר בהצלחה.', 'אישור', { duration: 3000 });
+        if (result.setupPasswordLink) {
+          this.showSetupLink(result.name, result.setupPasswordLink);
+        } else {
+          this.snackBar.open('הארגון נוצר בהצלחה.', 'אישור', { duration: 3000 });
+        }
       }
     });
+  }
+
+  /** Task 4.2 success panel: copyable setup link + WhatsApp share. */
+  private showSetupLink(orgName: string, link: string): void {
+    const waText = encodeURIComponent(`שלום! הוקם עבורכם ארגון "${orgName}" במערכת Ezrahi.\nלהגדרת סיסמה ראשונית:\n${link}`);
+    const snack = this.snackBar.open('הארגון נוצר. העתק את קישור ההגדרה ושלח למנהל.', 'העתק קישור', { duration: 8000 });
+    snack.onAction().subscribe(() => {
+      void navigator.clipboard?.writeText(link).then(
+        () => this.snackBar.open('הקישור הועתק.', 'אישור', { duration: 2500 }),
+        () => this.snackBar.open(link, 'סגור', { duration: 8000 }),
+      );
+    });
+    // Also offer WhatsApp share via console-free prompt: open wa.me share.
+    window.open(`https://wa.me/?text=${waText}`, '_blank', 'noopener');
   }
 
   // Edit organization info + license

@@ -21,6 +21,18 @@
 
     <div class="row">
       <mat-form-field appearance="outline" class="half-width">
+        <mat-label>שם מנהל ראשוני</mat-label>
+        <input matInput formControlName="adminFullName" placeholder="ישראל ישראלי" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>טלפון מנהל</mat-label>
+        <input matInput formControlName="adminPhone" type="tel" placeholder="050-1234567" dir="ltr" />
+      </mat-form-field>
+    </div>
+
+    <div class="row">
+      <mat-form-field appearance="outline" class="half-width">
         <mat-label>דוא״ל מנהל ראשוני</mat-label>
         <input matInput formControlName="adminEmail" type="email" placeholder="manager@org.org.il" />
         <mat-error>כתובת דוא״ל לא תקינה</mat-error>

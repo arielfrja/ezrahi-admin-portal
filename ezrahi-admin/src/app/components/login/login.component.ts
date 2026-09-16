@@ -28,8 +28,11 @@ function toHebrewError(err: unknown): string {
     case 'auth/network-request-failed':
       return 'שגיאת תקשורת. יש לבדוק את החיבור ולנסות שוב.';
     default:
+      if (err instanceof Error && err.message.includes('PORTAL_UNAUTHORIZED')) {
+        return 'משתמש זה אינו מורשה גישה לפורטל הניהול';
+      }
       if (err instanceof Error && err.message.startsWith('Access denied')) {
-        return 'אין גישה: המשתמש אינו רשום כסופר-אדמין.';
+        return 'משתמש זה אינו מורשה גישה לפורטל הניהול';
       }
       return 'ההתחברות נכשלה.';
   }
@@ -75,8 +78,12 @@ export class LoginComponent {
 
     const { email, password } = this.loginForm.value;
     try {
-      await this.auth.login(email, password);
-      this.router.navigate(['/organizations']);
+      const role = await this.auth.login(email, password);
+      if (role === 'super-admin') {
+        this.router.navigate(['/super-admin/organizations']);
+      } else {
+        this.router.navigate(['/org']);
+      }
     } catch (err: unknown) {
       this.errorMessage.set(toHebrewError(err));
     } finally {
