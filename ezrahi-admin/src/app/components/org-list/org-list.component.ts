@@ -70,9 +70,12 @@ export class OrgListComponent implements OnInit {
   reactivateLabel = 'הפעלה מחדש';
   suspendLabel = 'השהיה';
 
-  eventsQuotaLabel(n: number | undefined): string {
+  eventsQuotaLabel(n: number | null | undefined): string {
+    // 0 and null both mean unlimited (stored as null).
+    if (n === null || n === 0) return 'ללא הגבלה';
+    if (n === undefined) return '';
     if (n === 1) return 'אירוע אחד';
-    return `${n ?? 0} אירועים`;
+    return `${n} אירועים`;
   }
 
   openRegisterDialog(): void {

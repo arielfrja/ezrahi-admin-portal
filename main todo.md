@@ -116,7 +116,7 @@ To prevent common errors produced by medium-tier LLMs:
 
 &#x20;     validUntil: Timestamp;
 
-&#x20;     maxActiveEvents: number;   // Maximum concurrent active field events
+&#x20;     maxActiveEvents: number | null;   // Maximum concurrent active field events; null = unlimited (UI uses 0)
 
 &#x20;   };
 
@@ -234,7 +234,7 @@ interface CreateOrgPayload {
 
 &#x20; validUntilDate: string; // ISO String
 
-&#x20; maxActiveEvents: number;
+&#x20; maxActiveEvents: number | null; // null = unlimited; undefined = default quota
 
 }
 
@@ -273,6 +273,14 @@ export const registerOrganization = functions.https.onCall(async (request) => {
 &#x20; if (!data.name || !data.adminEmail) {
 
 &#x20;   throw new functions.https.HttpsError("invalid-argument", "Missing required fields.");
+
+&#x20; }
+
+&#x20; if (data.maxActiveEvents !== undefined && data.maxActiveEvents !== null &&
+
+&#x20;     (typeof data.maxActiveEvents !== "number" || data.maxActiveEvents < 0)) {
+
+&#x20;   throw new functions.https.HttpsError("invalid-argument", "maxActiveEvents must be null or >= 0 (0 = unlimited).");
 
 &#x20; }
 
@@ -368,7 +376,9 @@ export const registerOrganization = functions.https.onCall(async (request) => {
 
 &#x20;     validUntil: admin.firestore.Timestamp.fromDate(new Date(data.validUntilDate)),
 
-&#x20;     maxActiveEvents: data.maxActiveEvents || 5,
+&#x20;     // undefined => default 5; 0/null => unlimited (stored as null).
+
+&#x20;     maxActiveEvents: data.maxActiveEvents === undefined ? 5 : (data.maxActiveEvents === 0 ? null : data.maxActiveEvents),
 
 &#x20;   },
 
@@ -518,7 +528,7 @@ export interface OrganizationLicense {
 
 &#x20; validUntil: any; // Firebase Timestamp or Date
 
-&#x20; maxActiveEvents: number;
+&#x20; maxActiveEvents: number | null; // null = unlimited (UI quota input 0)
 
 }
 
@@ -562,7 +572,7 @@ export interface RegisterOrgRequest {
 
 &#x20; validUntilDate: string; // ISO string
 
-&#x20; maxActiveEvents: number;
+&#x20; maxActiveEvents: number | null; // null = unlimited; undefined = default quota
 
 }
 

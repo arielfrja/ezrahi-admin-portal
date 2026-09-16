@@ -46,8 +46,9 @@
 
       <mat-form-field appearance="outline" class="half-width">
         <mat-label>מכסת אירועים במקביל</mat-label>
-        <input matInput formControlName="maxActiveEvents" type="number" min="1" />
-        <mat-error>נדרש מספר של 1 לפחות</mat-error>
+        <input matInput formControlName="maxActiveEvents" type="number" min="0" />
+        <mat-hint>0 = אירועים ללא הגבלה</mat-hint>
+        <mat-error>נדרש מספר 0 ומעלה</mat-error>
       </mat-form-field>
     </div>
 

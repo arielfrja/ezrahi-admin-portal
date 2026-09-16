@@ -16,7 +16,8 @@ export interface UpdateOrgInfo {
   name?: string;
   status?: 'ACTIVE' | 'EXPIRED' | 'TRIAL' | 'SUSPENDED';
   validUntil?: Date;
-  maxEvents?: number;
+  /** null = unlimited. */
+  maxEvents?: number | null;
 }
 
 export interface AdminUserInfo {
@@ -84,7 +85,8 @@ export class OrganizationService {
     });
   }
 
-  // Edit organization info + license (doc ID and orgAdmins are immutable here)
+  // Edit organization info + license (doc ID and orgAdmins are immutable here).
+  // maxEvents 0 is normalized to null (unlimited) so direct writes match the function.
   async updateOrganization(orgId: string, info: UpdateOrgInfo): Promise<void> {
     const patch: Record<string, unknown> = {};
     if (info.name !== undefined) patch['name'] = info.name;
@@ -92,7 +94,9 @@ export class OrganizationService {
     if (info.validUntil !== undefined) {
       patch['license.validUntil'] = Timestamp.fromDate(info.validUntil);
     }
-    if (info.maxEvents !== undefined) patch['license.maxActiveEvents'] = info.maxEvents;
+    if (info.maxEvents !== undefined) {
+      patch['license.maxActiveEvents'] = info.maxEvents === 0 ? null : info.maxEvents;
+    }
     if (Object.keys(patch).length === 0) return;
     const orgRef = doc(this.fb.firestore, 'organizations', orgId);
     await updateDoc(orgRef, patch);

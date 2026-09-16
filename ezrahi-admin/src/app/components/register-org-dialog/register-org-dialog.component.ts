@@ -59,7 +59,8 @@ export class RegisterOrgDialogComponent {
       adminPassword: ['', [Validators.minLength(6)]],
       licenseStatus: ['ACTIVE', Validators.required],
       validUntilDate: [oneYearFromNow, Validators.required],
-      maxActiveEvents: [5, [Validators.required, Validators.min(1)]]
+      // 0 = unlimited (normalized to null before sending).
+      maxActiveEvents: [5, [Validators.required, Validators.min(0)]]
     });
   }
 
@@ -85,6 +86,8 @@ export class RegisterOrgDialogComponent {
     const val = this.orgForm.value;
     const manualSlug = (val.orgId as string)?.trim() || undefined;
     const manualPassword = (val.adminPassword as string)?.trim() || undefined;
+    // 0 = unlimited (backend stores null).
+    const quota = val.maxActiveEvents === 0 ? null : val.maxActiveEvents;
     try {
       await this.orgService.registerOrganization({
         name: val.name,
@@ -93,7 +96,7 @@ export class RegisterOrgDialogComponent {
         adminPassword: manualPassword,
         licenseStatus: val.licenseStatus,
         validUntilDate: new Date(val.validUntilDate).toISOString(),
-        maxActiveEvents: val.maxActiveEvents
+        maxActiveEvents: quota
       });
 
       this.dialogRef.close({ name: val.name, orgId: manualSlug ?? '' });

@@ -84,7 +84,8 @@ export class EditOrgDialogComponent implements OnInit {
       name: [org.name, [Validators.required, Validators.minLength(3)]],
       licenseStatus: [org.license.status, Validators.required],
       validUntilDate: [toDate(org.license.validUntil), Validators.required],
-      maxActiveEvents: [org.license.maxActiveEvents, [Validators.required, Validators.min(1)]]
+      // Stored null (unlimited) is shown as 0.
+      maxActiveEvents: [org.license.maxActiveEvents ?? 0, [Validators.required, Validators.min(0)]]
     });
   }
 
@@ -186,7 +187,7 @@ export class EditOrgDialogComponent implements OnInit {
         name: val.name,
         status: val.licenseStatus,
         validUntil: new Date(val.validUntilDate),
-        maxEvents: val.maxActiveEvents
+        maxEvents: val.maxActiveEvents === 0 ? null : val.maxActiveEvents
       });
       this.dialogRef.close(true);
     } catch (err: unknown) {

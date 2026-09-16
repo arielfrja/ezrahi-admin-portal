@@ -1,7 +1,8 @@
 export interface OrganizationLicense {
   status: 'ACTIVE' | 'EXPIRED' | 'TRIAL' | 'SUSPENDED';
   validUntil: unknown; // Firebase Timestamp or Date
-  maxActiveEvents: number;
+  /** Maximum concurrent active events. null = unlimited. */
+  maxActiveEvents: number | null;
 }
 
 export interface Organization {
@@ -26,5 +27,6 @@ export interface RegisterOrgRequest {
   adminPassword?: string;
   licenseStatus: 'ACTIVE' | 'TRIAL' | 'SUSPENDED';
   validUntilDate: string; // ISO string
-  maxActiveEvents: number;
+  /** null = unlimited. undefined = backend default (5). */
+  maxActiveEvents: number | null;
 }
