@@ -131,16 +131,24 @@ export class EditOrgDialogComponent implements OnInit {
       this.userSearch.setValue('');
       this.inviteEmail = '';
       if (res.created) {
-        // New Auth user: best-effort email; the setup-link dialog below is
-        // the reliable handoff (works for new AND existing users).
+        // New Auth user: best-effort email; the setup link stays available
+        // on demand via the snackbar action below.
         try {
           await sendPasswordResetEmail(this.firebase.auth, clean);
         } catch {
-          // Ignored on purpose — handled by the dialog.
+          // Ignored on purpose — link available on demand.
         }
       }
+      // Easy add: just a success toast. The setup link is opt-in via the
+      // toast action (needed only if the admin has no usable password).
       if (res.setupPasswordLink) {
-        this.showSetupLink(clean, res.setupPasswordLink, res.created);
+        const addedMsg = res.created
+          ? 'משתמש חדש הוזמן ונשלח אליו דוא״ל להגדרת סיסמה.'
+          : 'המנהל נוסף לארגון.';
+        this.snackBar
+          .open(addedMsg, 'קישור הגדרה', { duration: 10000 })
+          .onAction()
+          .subscribe(() => this.showSetupLink(clean, res.setupPasswordLink as string, res.created));
       } else if (res.created) {
         this.snackBar.open('משתמש חדש הוזמן ונשלח אליו דוא״ל להגדרת סיסמה.', 'אישור', { duration: 3000 });
       } else {
