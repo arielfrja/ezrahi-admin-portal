@@ -19,6 +19,7 @@ import { AdminUserInfo, OrganizationService } from '../../services/organization.
 import { FirebaseService } from '../../services/firebase.service';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
+import { SetupLinkDialogComponent } from '../setup-link-dialog/setup-link-dialog.component';
 
 export interface EditOrgDialogData {
   org: Organization;
@@ -130,13 +131,18 @@ export class EditOrgDialogComponent implements OnInit {
       this.userSearch.setValue('');
       this.inviteEmail = '';
       if (res.created) {
-        // New Auth user: email them a set-your-password link via Firebase's mailer.
+        // New Auth user: best-effort email; the setup-link dialog below is
+        // the reliable handoff (works for new AND existing users).
         try {
           await sendPasswordResetEmail(this.firebase.auth, clean);
-          this.snackBar.open('משתמש חדש הוזמן ונשלח אליו דוא״ל להגדרת סיסמה.', 'אישור', { duration: 3000 });
         } catch {
-          this.snackBar.open('המשתמש נוצר, אך שליחת הדוא״ל נכשלה.', 'סגור', { duration: 3500 });
+          // Ignored on purpose — handled by the dialog.
         }
+      }
+      if (res.setupPasswordLink) {
+        this.showSetupLink(clean, res.setupPasswordLink, res.created);
+      } else if (res.created) {
+        this.snackBar.open('משתמש חדש הוזמן ונשלח אליו דוא״ל להגדרת סיסמה.', 'אישור', { duration: 3000 });
       } else {
         this.snackBar.open('המנהל נוסף לארגון.', 'אישור', { duration: 2500 });
       }
@@ -146,6 +152,25 @@ export class EditOrgDialogComponent implements OnInit {
     } finally {
       this.adminsBusy.set(false);
     }
+  }
+
+  /** Credential handoff: copyable set-password link + WhatsApp share. */
+  private showSetupLink(email: string, link: string, created: boolean): void {
+    const orgName = this.data.org.name;
+    const intro = created
+      ? `הוזמנת כמנהל ארגון "${orgName}" בפורטל Ezrahi.`
+      : `אתה מנהל ארגון "${orgName}" בפורטל Ezrahi.`;
+    const text =
+      `${intro}\nלהגדרת סיסמה:\n${link}\nכניסה:\nhttps://ezrahi-admin-portal.web.app/login`;
+    this.dialog.open(SetupLinkDialogComponent, {
+      width: '520px',
+      data: {
+        title: 'גישת מנהל מוכנה',
+        description: `${email} ${created ? 'הוזמן.' : 'כבר היה רשום.'} יש לשתף את קישור ההגדרה כדי שיוכל להגדיר סיסמה ולהיכנס כמנהל ארגון (לא סופר-אדמין).`,
+        link,
+        whatsappUrl: `https://wa.me/?text=${encodeURIComponent(text)}`,
+      },
+    });
   }
 
   removeAdmin(uid: string): void {

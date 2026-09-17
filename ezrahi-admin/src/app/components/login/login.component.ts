@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
+import { FirebaseService } from '../../services/firebase.service';
+import { sendPasswordResetEmail } from 'firebase/auth';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -10,6 +12,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 /** Firebase Auth error codes mapped to Hebrew messages. */
 function toHebrewError(err: unknown): string {
@@ -49,7 +52,8 @@ function toHebrewError(err: unknown): string {
     MatInputModule,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    MatSnackBarModule
   ],
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss']
@@ -58,10 +62,13 @@ export class LoginComponent {
   loginForm: FormGroup;
   errorMessage = signal<string | null>(null);
   isSubmitting = signal<boolean>(false);
+  isSendingReset = signal<boolean>(false);
 
   constructor(
     private fb: FormBuilder,
     private auth: AuthService,
+    private firebase: FirebaseService,
+    private snackBar: MatSnackBar,
     private router: Router
   ) {
     this.loginForm = this.fb.group({
@@ -88,6 +95,27 @@ export class LoginComponent {
       this.errorMessage.set(toHebrewError(err));
     } finally {
       this.isSubmitting.set(false);
+    }
+  }
+
+  /** Self-serve recovery for existing users (org admins added earlier). */
+  async onForgotPassword(): Promise<void> {
+    const emailCtrl = this.loginForm.get('email');
+    const email = String(emailCtrl?.value ?? '').trim();
+    if (!emailCtrl?.valid) {
+      emailCtrl?.markAsTouched();
+      this.snackBar.open('יש להזין כתובת דוא״ל תקינה ואז לנסות שוב.', 'סגור', { duration: 3500 });
+      return;
+    }
+    this.isSendingReset.set(true);
+    try {
+      await sendPasswordResetEmail(this.firebase.auth, email);
+      this.snackBar.open('נשלח דוא״ל לאיפוס סיסמה — יש לבדוק גם ספאם.', 'אישור', { duration: 5000 });
+    } catch {
+      // With enumeration protection the call may fail silently; same message.
+      this.snackBar.open('אם הדוא״ל רשום, קישור איפוס נשלח אליו.', 'אישור', { duration: 5000 });
+    } finally {
+      this.isSendingReset.set(false);
     }
   }
 }

@@ -34,6 +34,8 @@ export interface AddOrgAdminResult {
   uid: string;
   email: string;
   created: boolean;
+  /** Set-password link (new AND existing users) for manual handoff. */
+  setupPasswordLink?: string;
 }
 
 @Injectable({
