@@ -1,10 +1,7 @@
-import { Component, Inject } from '@angular/core';
+import { Component, ElementRef, Inject, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { MatInputModule } from '@angular/material/input';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 export interface SetupLinkDialogData {
@@ -27,9 +24,6 @@ export interface SetupLinkDialogData {
     CommonModule,
     MatDialogModule,
     MatButtonModule,
-    MatFormFieldModule,
-    MatInputModule,
-    MatIconModule,
     MatSnackBarModule,
   ],
   template: `
@@ -37,13 +31,10 @@ export interface SetupLinkDialogData {
     <mat-dialog-content>
       <p class="desc">{{ data.description }}</p>
       @if (data.link) {
-        <mat-form-field appearance="outline" class="full-width" dir="ltr">
-          <mat-label>Setup link</mat-label>
-          <input matInput [value]="data.link" readonly (focus)="$any($event.target).select()" />
-          <button mat-icon-button matSuffix (click)="copy()" title="Copy link">
-            <mat-icon>content_copy</mat-icon>
-          </button>
-        </mat-form-field>
+        <div #linkBox class="link-box" dir="ltr" (click)="selectAll()" title="Click to select">
+          {{ data.link }}
+        </div>
+        <p class="hint">The full link is shown above — click it to select, or use Copy.</p>
       } @else {
         <p class="warn">No link was generated — ask the user to use “forgot password” on the login screen.</p>
       }
@@ -58,23 +49,57 @@ export interface SetupLinkDialogData {
   `,
   styles: [`
     .desc { color: #475569; font-size: 14px; }
-    .full-width { width: 100%; }
+    .link-box {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+      word-break: break-all;
+      cursor: text;
+      user-select: all;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .hint { color: #94a3b8; font-size: 12px; margin-top: 6px; }
     .warn { color: #b45309; }
   `],
 })
 export class SetupLinkDialogComponent {
+  @ViewChild('linkBox') linkBox?: ElementRef<HTMLElement>;
+
   constructor(
     public dialogRef: MatDialogRef<SetupLinkDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: SetupLinkDialogData,
     private snackBar: MatSnackBar,
   ) {}
 
+  selectAll(): void {
+    const el = this.linkBox?.nativeElement;
+    if (!el) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+
   copy(): void {
     if (!this.data.link) return;
-    void navigator.clipboard?.writeText(this.data.link).then(
-      () => this.snackBar.open('The link was copied.', 'OK', { duration: 2500 }),
-      () => this.snackBar.open('Copy failed — select the link manually.', 'Close', { duration: 4000 }),
-    );
+    if (navigator.clipboard) {
+      void navigator.clipboard.writeText(this.data.link).then(
+        () => this.snackBar.open('The link was copied.', 'OK', { duration: 2500 }),
+        () => {
+          this.selectAll();
+          this.snackBar.open('Copy blocked — link selected, press Ctrl+C.', 'OK', { duration: 4000 });
+        },
+      );
+    } else {
+      this.selectAll();
+      this.snackBar.open('Link selected — press Ctrl+C to copy.', 'OK', { duration: 4000 });
+    }
   }
 
   share(): void {
