@@ -15,6 +15,7 @@ import { LiveService, LiveParticipant, LiveLocation, FieldIncident } from '../..
 import { FieldEvent } from '../../models/event.model';
 import { BASE_ROLES } from '../../models/event.model';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
+import { applyHebrewLabels } from '../../utils/hebrew-labels';
 import { Subscription } from 'rxjs';
 
 const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r) => [r.id, r.color]));
@@ -218,6 +219,7 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     this.map.addControl(new maplibregl.NavigationControl(), 'top-left');
     this.map.on('load', () => {
       this.mapReady.set(true);
+      applyHebrewLabels(this.map!);
       const e = this.event();
       if (e) void this.ensureRouteLayer(e);
       this.syncStaffMarkers();

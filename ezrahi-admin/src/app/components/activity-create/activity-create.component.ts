@@ -15,6 +15,7 @@ import { EventService } from '../../services/event.service';
 import { StaffService } from '../../services/staff.service';
 import { OrganizationService } from '../../services/organization.service';
 import { AuthService } from '../../services/auth.service';
+import { applyHebrewLabels } from '../../utils/hebrew-labels';
 import { PermanentStaff } from '../../models/staff.model';
 import { Organization } from '../../models/organization.model';
 
@@ -254,6 +255,7 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
       });
 
       this.map.on('load', () => this.redrawRadius());
+      this.map.on('load', () => applyHebrewLabels(this.map!));
     });
     this.redrawRadius();
   }
