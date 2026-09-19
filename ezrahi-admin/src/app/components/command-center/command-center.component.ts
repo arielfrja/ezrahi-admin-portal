@@ -260,6 +260,33 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
         // fall through to center fallback
       }
     }
+    const rects = e.route?.rects;
+    if (Array.isArray(rects) && rects.length > 0) {
+      const polys = rects.map((r) => [[
+        [r.west, r.south],
+        [r.east, r.south],
+        [r.east, r.north],
+        [r.west, r.north],
+        [r.west, r.south],
+      ]]);
+      this.map.addSource('route', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: polys.map((coordinates) => ({
+            type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates },
+          })),
+        },
+      });
+      this.map.addLayer({ id: 'route-fill', type: 'fill', source: 'route', paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.18 } });
+      this.map.addLayer({ id: 'route-line', type: 'line', source: 'route', paint: { 'line-color': '#7c3aed', 'line-width': 2, 'line-dasharray': [3, 2] } });
+      const bounds = rects.reduce(
+        (b, r) => b.extend([r.west, r.south]).extend([r.east, r.north]),
+        new maplibregl.LngLatBounds([rects[0].west, rects[0].south], [rects[0].east, rects[0].north]),
+      );
+      this.map.fitBounds(bounds, { padding: 40 });
+      return;
+    }
     if (e.route?.center) {
       this.map.flyTo({ center: [e.route.center.lng, e.route.center.lat], zoom: 12 });
     }

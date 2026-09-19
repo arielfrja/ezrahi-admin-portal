@@ -2,10 +2,19 @@
 
 export type EventStatus = 'PLANNED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
 
+export interface EventRect {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
 export interface EventRoute {
   gpxPath?: string;
   center?: { lat: number; lng: number };
   radiusM?: number;
+  /** Multiple rectangular areas (preferred over center+radius when present). */
+  rects?: EventRect[];
 }
 
 export interface FieldEvent {
@@ -30,6 +39,7 @@ export interface CreateEventRequest {
   gpxPath?: string;
   center?: { lat: number; lng: number };
   radiusM?: number;
+  rects?: EventRect[];
 }
 
 export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {

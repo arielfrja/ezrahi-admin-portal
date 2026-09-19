@@ -10,7 +10,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSliderModule } from '@angular/material/slider';
+import { MatIconModule } from '@angular/material/icon';
+import { EventRect } from '../../models/event.model';
 import { EventService } from '../../services/event.service';
 import { StaffService } from '../../services/staff.service';
 import { OrganizationService } from '../../services/organization.service';
@@ -18,6 +19,37 @@ import { AuthService } from '../../services/auth.service';
 import { applyHebrewLabels } from '../../utils/hebrew-labels';
 import { PermanentStaff } from '../../models/staff.model';
 import { Organization } from '../../models/organization.model';
+
+interface DrawnFeature {
+  type: 'Feature';
+  properties: Record<string, never>;
+  geometry: { type: 'Polygon'; coordinates: [number, number][][] };
+}
+
+/** Bounds of the drag from corner a to corner b (order-independent). */
+function rectBetween(a: maplibregl.LngLat, b: maplibregl.LngLat): EventRect {
+  return {
+    north: Math.max(a.lat, b.lat),
+    south: Math.min(a.lat, b.lat),
+    east: Math.max(a.lng, b.lng),
+    west: Math.min(a.lng, b.lng),
+  };
+}
+
+function rectCoords(r: EventRect): [number, number][] {
+  return [
+    [r.west, r.south],
+    [r.east, r.south],
+    [r.east, r.north],
+    [r.west, r.north],
+    [r.west, r.south],
+  ];
+}
+
+/** Discard degenerate drags (a click without drag); threshold ~10m. */
+function isUsableRect(r: EventRect): boolean {
+  return (r.north - r.south) * 111320 > 10 && (r.east - r.west) * 111320 > 10;
+}
 
 /** Task 5.2 — /org/activities/create: name + hours + manager + GPX / map-set area. */
 @Component({
@@ -33,7 +65,7 @@ import { Organization } from '../../models/organization.model';
     MatCardModule,
     MatSnackBarModule,
     MatProgressSpinnerModule,
-    MatSliderModule,
+    MatIconModule,
   ],
   template: `
     <div class="page" dir="rtl">
@@ -79,28 +111,41 @@ import { Organization } from '../../models/organization.model';
             @if (gpxName()) {
               <p class="ok">נבחר: {{ gpxName() }}</p>
             } @else {
-              <p class="hint">ללא קובץ — יש להגדיר שטח אירוע במפה למטה</p>
+              <p class="hint">ללא קובץ — יש לסמן שטח אחד לפחות במפה למטה</p>
             }
           </div>
 
           <div class="full area-card">
-            <label>שטח האירוע — לחצו על המפה למקם מרכז, גררו את הסמן לדיוק</label>
-            <div #mapEl class="map"></div>
-            <p class="hint" dir="ltr">
-              מרכז: {{ centerLat().toFixed(5) }}, {{ centerLng().toFixed(5) }} · רדיוס: {{ radiusM() }} מ׳
-            </p>
-          </div>
-
-          <div class="full radius-box">
-            <label>רדיוס (מטר)</label>
-            <mat-slider class="slider" min="100" max="20000" step="100">
-              <input matSliderThumb formControlName="radiusM" (valueChange)="onRadiusChange($event)" />
-            </mat-slider>
-            <span class="radius-val" dir="ltr">{{ radiusM() }} מ׳</span>
+            <div class="area-bar">
+              <label>שטחי האירוע — מלבנים על המפה (ניתן לסמן כמה)</label>
+              <div class="area-ops">
+                <button mat-stroked-button color="primary" type="button" (click)="toggleDraw()">
+                  {{ drawMode() ? 'סיום סימון' : 'סימון שטח' }}
+                </button>
+                <button mat-button type="button" (click)="clearAll()" [disabled]="rects().length === 0">נקה הכל</button>
+              </div>
+            </div>
+            <div #mapEl class="map" [class.drawing]="drawMode()"></div>
+            @if (drawMode()) {
+              <p class="hint">גררו מלבן על המפה — בסיום לחצו שוב על "סיום סימון"</p>
+            } @else {
+              <p class="hint">סומנו {{ rects().length }} שטחים · לחצו "סימון שטח" ואז גררו מלבן על המפה</p>
+            }
+            @if (rects().length > 0) {
+              <div class="rect-list">
+                @for (r of rects(); track $index) {
+                  <span class="rect-chip">שטח {{ $index + 1 }}
+                    <button mat-icon-button type="button" (click)="removeRect($index)" title="מחק שטח">
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  </span>
+                }
+              </div>
+            }
           </div>
 
           <div class="full ops">
-            <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving()">
+            <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving() || (!gpxFile() && rects().length === 0)">
               @if (saving()) { <mat-spinner diameter="20"></mat-spinner> } @else { צור אירוע והמשך להזמנות }
             </button>
           </div>
@@ -121,10 +166,11 @@ import { Organization } from '../../models/organization.model';
     .hint { color: #64748b; font-size: 13px; } .ok { color: #15803d; }
     .ops { display: flex; } .err { color: #b91c1c; }
     .map { width: 100%; height: 320px; border-radius: 8px; overflow: hidden; margin-top: 8px; }
-    .slider { width: 100%; }
-    .radius-val { color: #475569; font-size: 13px; }
-    .radius-box { display: flex; align-items: center; gap: 12px; }
-    .radius-box .slider { flex: 1; }
+    .map.drawing { outline: 2px solid #7c3aed; }
+    .area-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .area-ops { display: flex; gap: 8px; align-items: center; }
+    .rect-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .rect-chip { display: inline-flex; align-items: center; gap: 4px; background: #f1f5f9; border-radius: 999px; padding: 2px 6px 2px 12px; font-size: 13px; }
   `],
 })
 export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -146,12 +192,12 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   gpxFile = signal<File | null>(null);
   gpxName = signal<string>('');
 
-  centerLat = signal(31.7683);
-  centerLng = signal(35.2137);
-  radiusM = signal(2000);
+  rects = signal<EventRect[]>([]);
+  drawMode = signal(false);
 
   private map: maplibregl.Map | null = null;
-  private centerMarker: maplibregl.Marker | null = null;
+  private drawStart: maplibregl.LngLat | null = null;
+  private preview: EventRect | null = null;
 
   form = this.fb.group({
     orgId: ['', Validators.required],
@@ -159,9 +205,6 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
     startTime: ['', Validators.required],
     endTime: ['', Validators.required],
     managerId: ['', Validators.required],
-    centerLat: [31.7683],
-    centerLng: [35.2137],
-    radiusM: [2000, [Validators.min(100)]],
   });
 
   isSuper(): boolean {
@@ -223,7 +266,7 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
     }
   }
 
-  // ---- map: set center + radius for the event area ----
+  // ---- map: draw multiple rectangular event areas ----
 
   private initMap(): void {
     if (!this.mapEl || this.map) return;
@@ -231,75 +274,82 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
       this.map = new maplibregl.Map({
         container: this.mapEl.nativeElement,
         style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-        center: [this.centerLng(), this.centerLat()],
+        center: [35.2137, 31.7683],
         zoom: 10,
       });
       this.map.addControl(new maplibregl.NavigationControl(), 'top-left');
 
-      const el = document.createElement('div');
-      el.style.cssText =
-        'width:22px;height:22px;background:#7c3aed;border:3px solid #fff;' +
-        'border-radius:50% 50% 50% 0;transform:rotate(-45deg);' +
-        'box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:grab;';
-      this.centerMarker = new maplibregl.Marker({ element: el, draggable: true })
-        .setLngLat([this.centerLng(), this.centerLat()])
-        .addTo(this.map);
-      this.centerMarker.on('dragend', () => {
-        const ll = this.centerMarker!.getLngLat();
-        this.ngZone.run(() => this.setCenter(ll.lat, ll.lng));
+      this.map.on('mousedown', (e) => {
+        if (!this.drawMode() || (e.originalEvent.button ?? 0) !== 0) return;
+        this.drawStart = e.lngLat;
+      });
+      this.map.on('mousemove', (e) => {
+        if (!this.drawMode() || !this.drawStart) return;
+        this.preview = rectBetween(this.drawStart, e.lngLat);
+        this.syncAreas();
+      });
+      this.map.on('mouseup', (e) => {
+        if (!this.drawMode() || !this.drawStart) return;
+        const rect = rectBetween(this.drawStart, e.lngLat);
+        this.drawStart = null;
+        this.preview = null;
+        if (!isUsableRect(rect)) {
+          this.syncAreas();
+          return;
+        }
+        this.ngZone.run(() => {
+          this.rects.update((list) => [...list, rect].slice(0, 20));
+          this.syncAreas();
+        });
       });
 
-      this.map.on('click', (e) => {
-        this.centerMarker?.setLngLat([e.lngLat.lng, e.lngLat.lat]);
-        this.ngZone.run(() => this.setCenter(e.lngLat.lat, e.lngLat.lng));
-      });
-
-      this.map.on('load', () => this.redrawRadius());
+      this.map.on('load', () => this.syncAreas());
       this.map.on('load', () => applyHebrewLabels(this.map!));
     });
-    this.redrawRadius();
+    this.syncAreas();
   }
 
-  private setCenter(lat: number, lng: number): void {
-    this.centerLat.set(lat);
-    this.centerLng.set(lng);
-    this.form.patchValue({ centerLat: lat, centerLng: lng });
-    this.redrawRadius();
-  }
-
-  onRadiusChange(v: number | null): void {
-    const r = Number(v ?? 2000);
-    this.radiusM.set(r);
-    this.form.patchValue({ radiusM: r });
-    this.redrawRadius();
-  }
-
-  /** Redraw the radius circle as a 64-segment polygon (no proj lib needed;
-   *  lng scale corrected by cos(lat)). Uses GeoJSON source + style layers. */
-  private redrawRadius(): void {
-    if (!this.map || !this.map.isStyleLoaded()) return;
-    const lat = this.centerLat();
-    const lng = this.centerLng();
-    const r = this.radiusM();
-    const dLat = r / 111320;
-    const cosLat = Math.cos((lat * Math.PI) / 180) || 1;
-    const dLng = r / (111320 * cosLat);
-    const coords: [number, number][] = [];
-    const segs = 64;
-    for (let i = 0; i < segs; i++) {
-      const a = (i / segs) * 2 * Math.PI;
-      coords.push([lng + dLng * Math.cos(a), lat + dLat * Math.sin(a)]);
+  toggleDraw(): void {
+    this.drawMode.update((v) => !v);
+    this.drawStart = null;
+    this.preview = null;
+    this.syncAreas();
+    const canvas = this.map?.getCanvas();
+    if (canvas) canvas.style.cursor = this.drawMode() ? 'crosshair' : '';
+    if (this.map) {
+      if (this.drawMode()) this.map.dragPan.disable();
+      else this.map.dragPan.enable();
     }
-    coords.push(coords[0]);
-    const fc: maplibregl.GeoJSONFeature = {
-      type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [coords] },
-    } as maplibregl.GeoJSONFeature;
-    if (!this.map.getSource('area')) {
-      this.map.addSource('area', { type: 'geojson', data: fc });
-      this.map.addLayer({ id: 'area-fill', type: 'fill', source: 'area', paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.18 } });
-      this.map.addLayer({ id: 'area-line', type: 'line', source: 'area', paint: { 'line-color': '#7c3aed', 'line-width': 2, 'line-dasharray': [3, 2] } });
+  }
+
+  clearAll(): void {
+    this.rects.set([]);
+    this.syncAreas();
+  }
+
+  removeRect(i: number): void {
+    this.rects.update((list) => list.filter((_, k) => k !== i));
+    this.syncAreas();
+  }
+
+  /** Render all drawn rects (+ the in-progress preview) as GeoJSON polygons. */
+  private syncAreas(): void {
+    if (!this.map || !this.map.isStyleLoaded()) return;
+    const all = this.preview ? [...this.rects(), this.preview] : this.rects();
+    const fc: { type: 'FeatureCollection'; features: DrawnFeature[] } = {
+      type: 'FeatureCollection',
+      features: all.map((r) => ({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [rectCoords(r)] },
+      })),
+    };
+    if (!this.map.getSource('areas')) {
+      this.map.addSource('areas', { type: 'geojson', data: fc });
+      this.map.addLayer({ id: 'areas-fill', type: 'fill', source: 'areas', paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.18 } });
+      this.map.addLayer({ id: 'areas-line', type: 'line', source: 'areas', paint: { 'line-color': '#7c3aed', 'line-width': 2, 'line-dasharray': [3, 2] } });
     } else {
-      (this.map.getSource('area') as maplibregl.GeoJSONSource).setData(fc);
+      void (this.map.getSource('areas') as maplibregl.GeoJSONSource).setData(fc);
     }
   }
 
@@ -321,12 +371,7 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
         managerId: String(v.managerId ?? ''),
         startTime: new Date(String(v.startTime)).toISOString(),
         endTime: new Date(String(v.endTime)).toISOString(),
-        ...(gpxPath
-          ? { gpxPath }
-          : {
-              center: { lat: Number(v.centerLat), lng: Number(v.centerLng) },
-              radiusM: Number(v.radiusM ?? 2000),
-            }),
+        ...(gpxPath ? { gpxPath } : { rects: this.rects() }),
       });
       this.snack.open('האירוע נוצר.', 'אישור', { duration: 2500 });
       void this.router.navigate(['/org/activities', eventId, 'invites']);
