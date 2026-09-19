@@ -22,7 +22,7 @@ import { Organization } from '../../models/organization.model';
 
 interface DrawnFeature {
   type: 'Feature';
-  properties: Record<string, never>;
+  properties: { editing: boolean };
   geometry: { type: 'Polygon'; coordinates: [number, number][][] };
 }
 
@@ -126,7 +126,9 @@ function isUsableRect(r: EventRect): boolean {
               </div>
             </div>
             <div #mapEl class="map" [class.drawing]="drawMode()"></div>
-            @if (drawMode()) {
+            @if (editingIndex() !== null) {
+              <p class="hint">מצב עריכה: גררו מלבן חדש במקום שטח {{ editingIndex()! + 1 }}</p>
+            } @else if (drawMode()) {
               <p class="hint">גררו מלבן על המפה — בסיום לחצו שוב על "סיום סימון"</p>
             } @else {
               <p class="hint">סומנו {{ rects().length }} שטחים · לחצו "סימון שטח" ואז גררו מלבן על המפה</p>
@@ -134,9 +136,12 @@ function isUsableRect(r: EventRect): boolean {
             @if (rects().length > 0) {
               <div class="rect-list">
                 @for (r of rects(); track $index) {
-                  <span class="rect-chip">שטח {{ $index + 1 }}
+                  <span class="rect-chip" [class.editing]="editingIndex() === $index">שטח {{ $index + 1 }}
+                    <button mat-icon-button type="button" (click)="startEdit($index)" title="ערוך שטח">
+                      <mat-icon>{{ editingIndex() === $index ? 'close' : 'edit' }}</mat-icon>
+                    </button>
                     <button mat-icon-button type="button" (click)="removeRect($index)" title="מחק שטח">
-                      <mat-icon>close</mat-icon>
+                      <mat-icon>delete</mat-icon>
                     </button>
                   </span>
                 }
@@ -171,6 +176,7 @@ function isUsableRect(r: EventRect): boolean {
     .area-ops { display: flex; gap: 8px; align-items: center; }
     .rect-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     .rect-chip { display: inline-flex; align-items: center; gap: 4px; background: #f1f5f9; border-radius: 999px; padding: 2px 6px 2px 12px; font-size: 13px; }
+    .rect-chip.editing { background: #fef3c7; outline: 2px solid #f59e0b; }
   `],
 })
 export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -194,6 +200,8 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
 
   rects = signal<EventRect[]>([]);
   drawMode = signal(false);
+  /** Index of the rect being re-drawn, or null when not editing. */
+  editingIndex = signal<number | null>(null);
 
   private map: maplibregl.Map | null = null;
   private drawStart: maplibregl.LngLat | null = null;
@@ -298,8 +306,17 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
           return;
         }
         this.ngZone.run(() => {
-          this.rects.update((list) => [...list, rect].slice(0, 20));
-          this.syncAreas();
+          const idx = this.editingIndex();
+          if (idx == null) {
+            this.rects.update((list) => [...list, rect].slice(0, 20));
+            this.syncAreas();
+          } else {
+            // Replace the edited rect, then leave edit + draw mode.
+            this.rects.update((list) => list.map((r, k) => (k === idx ? rect : r)));
+            this.editingIndex.set(null);
+            if (this.drawMode()) this.toggleDraw();
+            else this.syncAreas();
+          }
         });
       });
 
@@ -311,6 +328,7 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
 
   toggleDraw(): void {
     this.drawMode.update((v) => !v);
+    if (!this.drawMode()) this.editingIndex.set(null);
     this.drawStart = null;
     this.preview = null;
     this.syncAreas();
@@ -324,30 +342,62 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
 
   clearAll(): void {
     this.rects.set([]);
+    this.editingIndex.set(null);
     this.syncAreas();
   }
 
   removeRect(i: number): void {
+    if (this.editingIndex() === i) this.editingIndex.set(null);
+    else if (this.editingIndex() != null && i < this.editingIndex()!) {
+      this.editingIndex.update((v) => (v == null ? v : v - 1));
+    }
     this.rects.update((list) => list.filter((_, k) => k !== i));
     this.syncAreas();
   }
 
-  /** Render all drawn rects (+ the in-progress preview) as GeoJSON polygons. */
+  /** Enter edit mode for rect i: the next drawn rectangle replaces it.
+   *  Clicking the same rect again cancels editing. */
+  startEdit(i: number): void {
+    if (this.editingIndex() === i) {
+      this.editingIndex.set(null);
+      if (this.drawMode()) this.toggleDraw();
+      else this.syncAreas();
+      return;
+    }
+    this.editingIndex.set(i);
+    if (!this.drawMode()) this.toggleDraw();
+    else {
+      this.drawStart = null;
+      this.preview = null;
+      this.syncAreas();
+    }
+  }
+
+  /** Render all drawn rects (+ the in-progress preview) as GeoJSON polygons.
+   *  The rect under edit (and the preview replacing it) renders orange. */
   private syncAreas(): void {
     if (!this.map || !this.map.isStyleLoaded()) return;
-    const all = this.preview ? [...this.rects(), this.preview] : this.rects();
+    const editing = this.editingIndex();
+    const feats: DrawnFeature[] = this.rects().map((r, k) => ({
+      type: 'Feature',
+      properties: { editing: editing === k },
+      geometry: { type: 'Polygon', coordinates: [rectCoords(r)] },
+    }));
+    if (this.preview) {
+      feats.push({
+        type: 'Feature',
+        properties: { editing: true },
+        geometry: { type: 'Polygon', coordinates: [rectCoords(this.preview)] },
+      });
+    }
     const fc: { type: 'FeatureCollection'; features: DrawnFeature[] } = {
       type: 'FeatureCollection',
-      features: all.map((r) => ({
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'Polygon', coordinates: [rectCoords(r)] },
-      })),
+      features: feats,
     };
     if (!this.map.getSource('areas')) {
       this.map.addSource('areas', { type: 'geojson', data: fc });
-      this.map.addLayer({ id: 'areas-fill', type: 'fill', source: 'areas', paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.18 } });
-      this.map.addLayer({ id: 'areas-line', type: 'line', source: 'areas', paint: { 'line-color': '#7c3aed', 'line-width': 2, 'line-dasharray': [3, 2] } });
+      this.map.addLayer({ id: 'areas-fill', type: 'fill', source: 'areas', paint: { 'fill-color': ['case', ['==', ['get', 'editing'], true], '#f59e0b', '#7c3aed'], 'fill-opacity': 0.18 } });
+      this.map.addLayer({ id: 'areas-line', type: 'line', source: 'areas', paint: { 'line-color': ['case', ['==', ['get', 'editing'], true], '#f59e0b', '#7c3aed'], 'line-width': 2, 'line-dasharray': [3, 2] } });
     } else {
       void (this.map.getSource('areas') as maplibregl.GeoJSONSource).setData(fc);
     }
