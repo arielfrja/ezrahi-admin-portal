@@ -46,6 +46,66 @@ function rectCoords(r: EventRect): [number, number][] {
   ];
 }
 
+/** Parse GPX track points as [lng, lat] (same as the command-center renderer). */
+function parseGpxTrack(text: string): [number, number][] {
+  const pts: [number, number][] = [];
+  const re = /<trkpt[^>]*lat="([\d.\-]+)"[^>]*lon="([\d.\-]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    pts.push([Number(m[2]), Number(m[1])]);
+  }
+  return pts;
+}
+
+/** Bounding box of a track (loop-safe for large point counts). */
+function bboxOf(coords: [number, number][]): EventRect {
+  let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (lng < west) west = lng;
+    if (lng > east) east = lng;
+    if (lat < south) south = lat;
+    if (lat > north) north = lat;
+  }
+  return { north, south, east, west };
+}
+
+/** Sides of a rectangle grabbed for resizing (edges and/or corners). */
+interface ResizeSides {
+  n?: boolean;
+  s?: boolean;
+  e?: boolean;
+  w?: boolean;
+}
+
+function cursorForSides(s: ResizeSides): string {
+  if ((s.n && s.w) || (s.s && s.e)) return 'nwse-resize';
+  if ((s.n && s.e) || (s.s && s.w)) return 'nesw-resize';
+  if (s.n || s.s) return 'ns-resize';
+  return 'ew-resize';
+}
+
+function distToSegPx(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/** Expand a rect by `meters` on every side (clamped to valid lat/lng). */
+function padRect(r: EventRect, meters: number): EventRect {
+  const midLat = (r.north + r.south) / 2;
+  const dLat = meters / 111320;
+  const dLng = meters / (111320 * (Math.cos((midLat * Math.PI) / 180) || 1));
+  return {
+    north: Math.min(90, r.north + dLat),
+    south: Math.max(-90, r.south - dLat),
+    east: Math.min(180, r.east + dLng),
+    west: Math.max(-180, r.west - dLng),
+  };
+}
+
 /** Discard degenerate drags (a click without drag); threshold ~10m. */
 function isUsableRect(r: EventRect): boolean {
   return (r.north - r.south) * 111320 > 10 && (r.east - r.west) * 111320 > 10;
@@ -107,9 +167,11 @@ function isUsableRect(r: EventRect): boolean {
 
           <div class="full drop" (dragover)="$event.preventDefault()" (drop)="onDrop($event)">
             <label>קובץ מסלול GPX (גרור לכאן או בחר)</label>
-            <input type="file" accept=".gpx,application/gpx+xml" (change)="onFile($event)" />
+            <input #gpxInput type="file" accept=".gpx,application/gpx+xml" (change)="onFile($event)" />
             @if (gpxName()) {
-              <p class="ok">נבחר: {{ gpxName() }}</p>
+              <p class="ok">נבחר: {{ gpxName() }} · {{ gpxPoints() }} נקודות — המסלול מוצג על המפה · ניתן לשנות את גודל האזור בגרירת הגבול
+                <button mat-button type="button" (click)="clearGpx()">הסר קובץ</button>
+              </p>
             } @else {
               <p class="hint">ללא קובץ — יש לסמן שטח אחד לפחות במפה למטה</p>
             }
@@ -181,6 +243,7 @@ function isUsableRect(r: EventRect): boolean {
 })
 export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('mapEl') mapEl!: ElementRef<HTMLDivElement>;
+  @ViewChild('gpxInput') gpxInput!: ElementRef<HTMLInputElement>;
 
   private fb = inject(FormBuilder);
   private events = inject(EventService);
@@ -197,6 +260,18 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   error = signal<string | null>(null);
   gpxFile = signal<File | null>(null);
   gpxName = signal<string>('');
+  gpxPoints = signal(0);
+  private gpxCoords: [number, number][] = [];
+  private gpxFitted = false;
+  /** Editable GPX area (bbox + 500m padding at load; user-resizable after). */
+  private gpxArea: EventRect | null = null;
+  /** True once the user resizes the GPX area — then it is submitted as rects. */
+  private gpxAreaDirty = false;
+  /** Active edge/corner resize drag: which rect (or the GPX area) + which sides. */
+  private resizeTarget: { sides: ResizeSides; rectIndex: number | 'gpx' } | null = null;
+  private onWindowMouseUp = (): void => {
+    this.endResize();
+  };
 
   rects = signal<EventRect[]>([]);
   drawMode = signal(false);
@@ -241,6 +316,8 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   ngOnDestroy(): void {
+    window.removeEventListener('mouseup', this.onWindowMouseUp);
+    window.removeEventListener('blur', this.onWindowMouseUp);
     this.map?.remove();
     this.map = null;
   }
@@ -259,19 +336,52 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   onFile(ev: Event): void {
     const input = ev.target as HTMLInputElement;
     const f = input.files?.[0];
-    if (f) {
-      this.gpxFile.set(f);
-      this.gpxName.set(f.name);
-    }
+    if (f) void this.handleGpxFile(f);
   }
 
   onDrop(ev: DragEvent): void {
     ev.preventDefault();
     const f = ev.dataTransfer?.files?.[0];
-    if (f) {
-      this.gpxFile.set(f);
-      this.gpxName.set(f.name);
+    if (f) void this.handleGpxFile(f);
+  }
+
+  /** Parse the selected GPX immediately and preview track + area on the map. */
+  private async handleGpxFile(f: File): Promise<void> {
+    let coords: [number, number][];
+    try {
+      coords = parseGpxTrack(await f.text());
+    } catch {
+      this.snack.open('קריאת הקובץ נכשלה.', 'סגור', { duration: 3500 });
+      return;
     }
+    if (coords.length < 2) {
+      this.snack.open('הקובץ אינו מכיל מסלול GPX תקין.', 'סגור', { duration: 3500 });
+      return;
+    }
+    this.gpxFile.set(f);
+    this.gpxName.set(f.name);
+    this.gpxCoords = coords;
+    this.gpxPoints.set(coords.length);
+    this.gpxFitted = false;
+    this.gpxArea = padRect(bboxOf(coords), 500);
+    this.gpxAreaDirty = false;
+    this.ngZone.runOutsideAngular(() => {
+      this.syncGpxPreview();
+      this.fitGpx();
+    });
+  }
+
+  clearGpx(): void {
+    this.gpxFile.set(null);
+    this.gpxName.set('');
+    this.gpxCoords = [];
+    this.gpxPoints.set(0);
+    this.gpxFitted = false;
+    this.gpxArea = null;
+    this.gpxAreaDirty = false;
+    this.endResize();
+    if (this.gpxInput) this.gpxInput.nativeElement.value = '';
+    this.ngZone.runOutsideAngular(() => this.removeGpxLayers());
   }
 
   // ---- map: draw multiple rectangular event areas ----
@@ -291,12 +401,31 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
         if (!this.drawMode() || (e.originalEvent.button ?? 0) !== 0) return;
         this.drawStart = e.lngLat;
       });
+      this.map.on('mousedown', (e) => {
+        // Edge/corner resize of a drawn rect or the GPX area (draw mode off).
+        if (this.drawMode() || (e.originalEvent.button ?? 0) !== 0) return;
+        const hit = this.resizeHit(e.lngLat);
+        if (!hit) return;
+        this.resizeTarget = hit;
+        this.map?.dragPan.disable();
+      });
       this.map.on('mousemove', (e) => {
-        if (!this.drawMode() || !this.drawStart) return;
+        if (this.resizeTarget) {
+          this.updateResize(e.lngLat);
+          return;
+        }
+        if (!this.drawMode() || !this.drawStart) {
+          if (!this.drawMode() && (e.originalEvent.buttons ?? 0) === 0) this.updateHoverCursor(e.lngLat);
+          return;
+        }
         this.preview = rectBetween(this.drawStart, e.lngLat);
         this.syncAreas();
       });
       this.map.on('mouseup', (e) => {
+        if (this.resizeTarget) {
+          this.endResize();
+          return;
+        }
         if (!this.drawMode() || !this.drawStart) return;
         const rect = rectBetween(this.drawStart, e.lngLat);
         this.drawStart = null;
@@ -322,6 +451,12 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
 
       this.map.on('load', () => this.syncAreas());
       this.map.on('load', () => applyHebrewLabels(this.map!));
+      this.map.on('load', () => {
+        this.syncGpxPreview();
+        this.fitGpx();
+      });
+      window.addEventListener('mouseup', this.onWindowMouseUp);
+      window.addEventListener('blur', this.onWindowMouseUp);
     });
     this.syncAreas();
   }
@@ -341,12 +476,21 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   clearAll(): void {
+    this.endResize();
     this.rects.set([]);
     this.editingIndex.set(null);
     this.syncAreas();
   }
 
   removeRect(i: number): void {
+    if (this.resizeTarget && this.resizeTarget.rectIndex !== 'gpx') {
+      const t = this.resizeTarget.rectIndex;
+      if (i === t) this.endResize();
+      else if (i < t) {
+        const rt = this.resizeTarget;
+        if (rt && rt.rectIndex !== 'gpx') rt.rectIndex = t - 1;
+      }
+    }
     if (this.editingIndex() === i) this.editingIndex.set(null);
     else if (this.editingIndex() != null && i < this.editingIndex()!) {
       this.editingIndex.update((v) => (v == null ? v : v - 1));
@@ -371,6 +515,136 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
       this.preview = null;
       this.syncAreas();
     }
+  }
+
+  /** Draw the selected GPX track plus its (resizable) area. */
+  private syncGpxPreview(): void {
+    if (!this.map || !this.map.isStyleLoaded() || this.gpxCoords.length < 2 || !this.gpxArea) return;
+    const box = this.gpxArea;
+    const data = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'Polygon', coordinates: [rectCoords(box)] },
+        },
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: this.gpxCoords },
+        },
+      ],
+    };
+    try {
+      if (!this.map.getSource('gpx')) {
+        this.map.addSource('gpx', { type: 'geojson', data });
+        this.map.addLayer({ id: 'gpx-area-fill', type: 'fill', source: 'gpx', filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.12 } });
+        this.map.addLayer({ id: 'gpx-area-line', type: 'line', source: 'gpx', filter: ['==', '$type', 'Polygon'], paint: { 'line-color': '#7c3aed', 'line-width': 2, 'line-dasharray': [3, 2] } });
+        this.map.addLayer({ id: 'gpx-track', type: 'line', source: 'gpx', filter: ['==', '$type', 'LineString'], paint: { 'line-color': '#7c3aed', 'line-width': 4 } });
+      } else {
+        void (this.map.getSource('gpx') as maplibregl.GeoJSONSource).setData(data);
+      }
+    } catch (err) {
+      this.error.set('הצגת המסלול נכשלה: ' + String(err));
+    }
+  }
+
+  private fitGpx(): void {
+    if (!this.map || !this.map.isStyleLoaded() || this.gpxCoords.length < 2 || this.gpxFitted || !this.gpxArea) return;
+    const box = this.gpxArea;
+    this.map.fitBounds([[box.west, box.south], [box.east, box.north]], { padding: 40 });
+    this.gpxFitted = true;
+  }
+
+  private removeGpxLayers(): void {
+    if (!this.map) return;
+    for (const id of ['gpx-track', 'gpx-area-line', 'gpx-area-fill']) {
+      if (this.map.getLayer(id)) this.map.removeLayer(id);
+    }
+    if (this.map.getSource('gpx')) this.map.removeSource('gpx');
+  }
+  // ---- edge/corner resize (Windows-style) for drawn rects + GPX area ----
+
+  /** Hit-test rect borders (topmost drawn rect first), then the GPX area. */
+  private resizeHit(lngLat: maplibregl.LngLat): { sides: ResizeSides; rectIndex: number | 'gpx' } | null {
+    const map = this.map;
+    if (!map) return null;
+    const tol = 10;
+    const p = map.project([lngLat.lng, lngLat.lat]);
+    const testRect = (r: EventRect): ResizeSides | null => {
+      const nw = map.project([r.west, r.north]);
+      const ne = map.project([r.east, r.north]);
+      const sw = map.project([r.west, r.south]);
+      const se = map.project([r.east, r.south]);
+      const nearPt = (q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y) <= tol;
+      if (nearPt(nw)) return { n: true, w: true };
+      if (nearPt(ne)) return { n: true, e: true };
+      if (nearPt(sw)) return { s: true, w: true };
+      if (nearPt(se)) return { s: true, e: true };
+      if (distToSegPx(p.x, p.y, nw.x, nw.y, ne.x, ne.y) <= tol) return { n: true };
+      if (distToSegPx(p.x, p.y, sw.x, sw.y, se.x, se.y) <= tol) return { s: true };
+      if (distToSegPx(p.x, p.y, nw.x, nw.y, sw.x, sw.y) <= tol) return { w: true };
+      if (distToSegPx(p.x, p.y, ne.x, ne.y, se.x, se.y) <= tol) return { e: true };
+      return null;
+    };
+    const list = this.rects();
+    for (let k = list.length - 1; k >= 0; k--) {
+      const sides = testRect(list[k]);
+      if (sides) return { sides, rectIndex: k };
+    }
+    if (this.gpxArea) {
+      const sides = testRect(this.gpxArea);
+      if (sides) return { sides, rectIndex: 'gpx' };
+    }
+    return null;
+  }
+
+  private updateHoverCursor(lngLat: maplibregl.LngLat): void {
+    const canvas = this.map?.getCanvas();
+    if (!canvas) return;
+    const hit = this.resizeHit(lngLat);
+    canvas.style.cursor = hit ? cursorForSides(hit.sides) : '';
+  }
+
+  /** Apply the pointer position to the grabbed sides (min size ~10m). */
+  private updateResize(lngLat: maplibregl.LngLat): void {
+    const target = this.resizeTarget;
+    if (!target) return;
+    const current = target.rectIndex === 'gpx' ? this.gpxArea : this.rects()[target.rectIndex];
+    if (!current) {
+      this.endResize();
+      return;
+    }
+    const midLat = (current.north + current.south) / 2;
+    const minLatD = 10 / 111320;
+    const minLngD = 10 / (111320 * (Math.cos((midLat * Math.PI) / 180) || 1));
+    const r: EventRect = { ...current };
+    if (target.sides.n) r.north = Math.min(90, Math.max(lngLat.lat, r.south + minLatD));
+    if (target.sides.s) r.south = Math.max(-90, Math.min(lngLat.lat, r.north - minLatD));
+    if (target.sides.e) r.east = Math.min(180, Math.max(lngLat.lng, r.west + minLngD));
+    if (target.sides.w) r.west = Math.max(-180, Math.min(lngLat.lng, r.east - minLngD));
+    if (target.rectIndex === 'gpx') {
+      this.gpxArea = r;
+      this.gpxAreaDirty = true;
+      this.syncGpxPreview();
+    } else {
+      const idx = target.rectIndex;
+      this.ngZone.run(() => {
+        this.rects.update((list) => list.map((v, k) => (k === idx ? r : v)));
+        this.syncAreas();
+      });
+    }
+  }
+
+  private endResize(): void {
+    if (!this.resizeTarget) return;
+    this.resizeTarget = null;
+    if (this.map && !this.drawMode()) this.map.dragPan.enable();
+    const canvas = this.map?.getCanvas();
+    if (canvas) canvas.style.cursor = this.drawMode() ? 'crosshair' : '';
+    this.syncAreas();
+    this.syncGpxPreview();
   }
 
   /** Render all drawn rects (+ the in-progress preview) as GeoJSON polygons.
@@ -421,7 +695,9 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
         managerId: String(v.managerId ?? ''),
         startTime: new Date(String(v.startTime)).toISOString(),
         endTime: new Date(String(v.endTime)).toISOString(),
-        ...(gpxPath ? { gpxPath } : { rects: this.rects() }),
+        ...(gpxPath
+          ? { gpxPath, ...(this.gpxAreaDirty && this.gpxArea ? { rects: [this.gpxArea] } : {}) }
+          : { rects: this.rects() }),
       });
       this.snack.open('האירוע נוצר.', 'אישור', { duration: 2500 });
       void this.router.navigate(['/org/activities', eventId, 'invites']);

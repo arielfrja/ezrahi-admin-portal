@@ -241,6 +241,7 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     if (!this.map || !this.map.isStyleLoaded()) return;
     const gpxPath = e.route?.gpxPath;
     if (this.map.getSource('route')) return; // already drawn
+    const drawn: { line: boolean; bounds: maplibregl.LngLatBounds | null } = { line: false, bounds: null };
     if (gpxPath) {
       try {
         const url = await getDownloadURL(storageRef(this.fb.storage, gpxPath));
@@ -252,16 +253,15 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
             data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
           });
           this.map.addLayer({ id: 'route-line', type: 'line', source: 'route', paint: { 'line-color': '#7c3aed', 'line-width': 4 } });
-          const bounds = coords.reduce((b, c) => b.extend(c as [number, number]), new maplibregl.LngLatBounds(coords[0], coords[0]));
-          this.map.fitBounds(bounds, { padding: 40 });
-          return;
+          drawn.line = true;
+          drawn.bounds = coords.reduce((b, c) => b.extend(c as [number, number]), new maplibregl.LngLatBounds(coords[0], coords[0]));
         }
       } catch {
-        // fall through to center fallback
+        // fall through to rects/center fallback
       }
     }
     const rects = e.route?.rects;
-    if (Array.isArray(rects) && rects.length > 0) {
+    if (Array.isArray(rects) && rects.length > 0 && !this.map.getSource('route-areas')) {
       const polys = rects.map((r) => [[
         [r.west, r.south],
         [r.east, r.south],
@@ -269,7 +269,7 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
         [r.west, r.north],
         [r.west, r.south],
       ]]);
-      this.map.addSource('route', {
+      this.map.addSource('route-areas', {
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
@@ -278,13 +278,16 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
           })),
         },
       });
-      this.map.addLayer({ id: 'route-fill', type: 'fill', source: 'route', paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.18 } });
-      this.map.addLayer({ id: 'route-line', type: 'line', source: 'route', paint: { 'line-color': '#7c3aed', 'line-width': 2, 'line-dasharray': [3, 2] } });
-      const bounds = rects.reduce(
+      this.map.addLayer({ id: 'route-area-fill', type: 'fill', source: 'route-areas', paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.18 } });
+      this.map.addLayer({ id: 'route-area-line', type: 'line', source: 'route-areas', paint: { 'line-color': '#7c3aed', 'line-width': 2, 'line-dasharray': [3, 2] } });
+      const areaBounds = rects.reduce(
         (b, r) => b.extend([r.west, r.south]).extend([r.east, r.north]),
         new maplibregl.LngLatBounds([rects[0].west, rects[0].south], [rects[0].east, rects[0].north]),
       );
-      this.map.fitBounds(bounds, { padding: 40 });
+      drawn.bounds = drawn.bounds ? drawn.bounds.extend(areaBounds) : areaBounds;
+    }
+    if (drawn.bounds) {
+      this.map.fitBounds(drawn.bounds, { padding: 40 });
       return;
     }
     if (e.route?.center) {
