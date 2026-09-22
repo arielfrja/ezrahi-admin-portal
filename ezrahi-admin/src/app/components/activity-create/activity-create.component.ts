@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, signal, inject, ElementRef, ViewChild, AfterViewInit, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { FormBuilder, ReactiveFormsModule, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
+import { Router, ActivatedRoute } from '@angular/router';
 import * as maplibregl from 'maplibre-gl';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -11,7 +11,10 @@ import { MatCardModule } from '@angular/material/card';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
-import { EventRect } from '../../models/event.model';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { MatTimepickerModule } from '@angular/material/timepicker';
+import { EventRect, EventRoute } from '../../models/event.model';
 import { EventService } from '../../services/event.service';
 import { StaffService } from '../../services/staff.service';
 import { OrganizationService } from '../../services/organization.service';
@@ -106,9 +109,37 @@ function padRect(r: EventRect, meters: number): EventRect {
   };
 }
 
+/** Union bounding box of several rects. */
+function unionBox(boxes: EventRect[]): EventRect {
+  return boxes.reduce(
+    (acc, r) => ({
+      north: Math.max(acc.north, r.north),
+      south: Math.min(acc.south, r.south),
+      east: Math.max(acc.east, r.east),
+      west: Math.min(acc.west, r.west),
+    }),
+    { ...boxes[0] },
+  );
+}
 /** Discard degenerate drags (a click without drag); threshold ~10m. */
 function isUsableRect(r: EventRect): boolean {
   return (r.north - r.south) * 111320 > 10 && (r.east - r.west) * 111320 > 10;
+}
+
+/** Group validator: effective end (default 23:59) must be after effective start (default 00:00). */
+function endAfterStart(group: AbstractControl): ValidationErrors | null {
+  const v = group.value as { startDate: Date | null; startClock: Date | null; endDate: Date | null; endClock: Date | null };
+  const eff = (date: unknown, clock: unknown, isEnd: boolean): number | null => {
+    if (!(date instanceof Date) || isNaN(date.getTime())) return null;
+    const t = new Date(date);
+    if (clock instanceof Date && !isNaN(clock.getTime())) t.setHours(clock.getHours(), clock.getMinutes(), 0, 0);
+    else if (isEnd) t.setHours(23, 59, 0, 0);
+    else t.setHours(0, 0, 0, 0);
+    return t.getTime();
+  };
+  const s = eff(v.startDate, v.startClock, false);
+  const e = eff(v.endDate, v.endClock, true);
+  return s != null && e != null && e <= s ? { order: true } : null;
 }
 
 /** Task 5.2 — /org/activities/create: name + hours + manager + GPX / map-set area. */
@@ -126,15 +157,18 @@ function isUsableRect(r: EventRect): boolean {
     MatSnackBarModule,
     MatProgressSpinnerModule,
     MatIconModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    MatTimepickerModule,
   ],
   template: `
     <div class="page" dir="rtl">
-      <h2>הקמת אירוע חדש</h2>
-      <p class="sub">שם · שעות פעילות · מנהל מהמאגר · מסלול GPX או שטח אירוע במפה</p>
+      <h2>{{ isEdit() ? 'עריכת אירוע' : 'הקמת אירוע חדש' }}</h2>
+      <p class="sub">שם · תאריך ושעות פעילות · מנהל מהמאגר · מסלול GPX או שטח אירוע במפה</p>
 
       <mat-card class="card">
         <form [formGroup]="form" (ngSubmit)="submit()" class="grid">
-          @if (isSuper()) {
+          @if (isSuper() && !isEdit()) {
             <mat-form-field appearance="outline" class="full">
               <mat-label>ארגון</mat-label>
               <mat-select formControlName="orgId" (selectionChange)="onOrgChange($event.value)">
@@ -147,14 +181,57 @@ function isUsableRect(r: EventRect): boolean {
           <mat-form-field appearance="outline" class="full">
             <mat-label>שם האירוע</mat-label>
             <input matInput formControlName="name" placeholder="טיול פסח שכבה ח׳" />
+            @if (form.get('name')?.hasError('required')) {
+              <mat-error>שם האירוע חובה</mat-error>
+            } @else if (form.get('name')?.hasError('minlength')) {
+              <mat-error>לפחות 3 תווים</mat-error>
+            }
           </mat-form-field>
           <mat-form-field appearance="outline">
-            <mat-label>התחלה</mat-label>
-            <input matInput formControlName="startTime" type="datetime-local" />
+            <mat-label>תאריך התחלה</mat-label>
+            <input matInput [matDatepicker]="startDatePicker" formControlName="startDate" />
+            <mat-datepicker-toggle matIconSuffix [for]="startDatePicker"></mat-datepicker-toggle>
+            <mat-datepicker #startDatePicker></mat-datepicker>
+            @if (form.get('startDate')?.hasError('required')) {
+              <mat-error>תאריך התחלה חובה</mat-error>
+            } @else if (form.get('startDate')?.hasError('matDatepickerParse')) {
+              <mat-error>תאריך לא תקין</mat-error>
+            }
           </mat-form-field>
           <mat-form-field appearance="outline">
-            <mat-label>סיום</mat-label>
-            <input matInput formControlName="endTime" type="datetime-local" />
+            <mat-label>שעת התחלה</mat-label>
+            <input matInput [matTimepicker]="startTimePicker" formControlName="startClock" placeholder="00:00" />
+            <mat-timepicker-toggle matIconSuffix [for]="startTimePicker"></mat-timepicker-toggle>
+            <mat-timepicker #startTimePicker></mat-timepicker>
+            @if (form.get('startClock')?.invalid) {
+              <mat-error>שעה לא תקינה (למשל 08:30)</mat-error>
+            }
+            <mat-hint>אופציונלי — ברירת מחדל 00:00</mat-hint>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>תאריך סיום</mat-label>
+            <input matInput [matDatepicker]="endDatePicker" formControlName="endDate" />
+            <mat-datepicker-toggle matIconSuffix [for]="endDatePicker"></mat-datepicker-toggle>
+            <mat-datepicker #endDatePicker></mat-datepicker>
+            @if (form.get('endDate')?.hasError('required')) {
+              <mat-error>תאריך סיום חובה</mat-error>
+            } @else if (form.get('endDate')?.hasError('matDatepickerParse')) {
+              <mat-error>תאריך לא תקין</mat-error>
+            } @else if (form.hasError('order')) {
+              <mat-error>הסיום חייב להיות אחרי ההתחלה</mat-error>
+            }
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>שעת סיום</mat-label>
+            <input matInput [matTimepicker]="endTimePicker" formControlName="endClock" placeholder="23:59" />
+            <mat-timepicker-toggle matIconSuffix [for]="endTimePicker"></mat-timepicker-toggle>
+            <mat-timepicker #endTimePicker></mat-timepicker>
+            @if (form.get('endClock')?.invalid) {
+              <mat-error>שעה לא תקינה (למשל 18:30)</mat-error>
+            } @else if (form.hasError('order')) {
+              <mat-error>הסיום חייב להיות אחרי ההתחלה</mat-error>
+            }
+            <mat-hint>אופציונלי — ברירת מחדל 23:59</mat-hint>
           </mat-form-field>
           <mat-form-field appearance="outline" class="full">
             <mat-label>מנהל אירוע (מהמאגר הקבוע)</mat-label>
@@ -163,11 +240,23 @@ function isUsableRect(r: EventRect): boolean {
                 <mat-option [value]="s.staffId">{{ s.name }} · {{ s.phone }}</mat-option>
               }
             </mat-select>
+            @if (form.get('managerId')?.hasError('required')) {
+              <mat-error>יש לבחור מנהל אירוע</mat-error>
+            }
           </mat-form-field>
 
-          <div class="full drop" (dragover)="$event.preventDefault()" (drop)="onDrop($event)">
-            <label>קובץ מסלול GPX (גרור לכאן או בחר)</label>
-            <input #gpxInput type="file" accept=".gpx,application/gpx+xml" (change)="onFile($event)" />
+          <div class="full drop" [class.dragging]="dragOver()"
+            (dragenter)="$event.preventDefault(); dragOver.set(true)"
+            (dragover)="$event.preventDefault(); dragOver.set(true)"
+            (dragleave)="dragOver.set(false)"
+            (drop)="dragOver.set(false); onDrop($event)">
+            <div class="drop-row">
+              <button mat-flat-button color="primary" type="button" (click)="gpxInput.click()">
+                <mat-icon>upload_file</mat-icon> בחירת קובץ GPX
+              </button>
+              <span class="hint">או גררו קובץ GPX לכאן</span>
+            </div>
+            <input #gpxInput hidden type="file" accept=".gpx,application/gpx+xml" (change)="onFile($event)" />
             @if (gpxName()) {
               <p class="ok">נבחר: {{ gpxName() }} · {{ gpxPoints() }} נקודות — המסלול מוצג על המפה · ניתן לשנות את גודל האזור בגרירת הגבול
                 <button mat-button type="button" (click)="clearGpx()">הסר קובץ</button>
@@ -188,7 +277,9 @@ function isUsableRect(r: EventRect): boolean {
               </div>
             </div>
             <div #mapEl class="map" [class.drawing]="drawMode()"></div>
-            @if (editingIndex() !== null) {
+            @if (loading()) {
+              <p class="hint">טוען נתוני אירוע…</p>
+            } @else if (editingIndex() !== null) {
               <p class="hint">מצב עריכה: גררו מלבן חדש במקום שטח {{ editingIndex()! + 1 }}</p>
             } @else if (drawMode()) {
               <p class="hint">גררו מלבן על המפה — בסיום לחצו שוב על "סיום סימון"</p>
@@ -212,9 +303,12 @@ function isUsableRect(r: EventRect): boolean {
           </div>
 
           <div class="full ops">
-            <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving() || (!gpxFile() && rects().length === 0)">
-              @if (saving()) { <mat-spinner diameter="20"></mat-spinner> } @else { צור אירוע והמשך להזמנות }
+            <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving() || !hasRoute()">
+              @if (saving()) { <mat-spinner diameter="20"></mat-spinner> } @else { {{ isEdit() ? 'שמור שינויים' : 'צור אירוע והמשך להזמנות' }} }
             </button>
+            @if (isEdit()) {
+              <button mat-button type="button" (click)="cancelEdit()">ביטול</button>
+            }
           </div>
           @if (error()) {
             <p class="full err">{{ error() }}</p>
@@ -229,9 +323,11 @@ function isUsableRect(r: EventRect): boolean {
     .card { padding: 20px; margin-top: 12px; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .full { grid-column: 1 / -1; }
-    .drop { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 16px; }
+    .drop { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 16px; transition: border-color 0.15s, background 0.15s; }
+    .drop.dragging { border-color: #7c3aed; background: #f5f3ff; }
+    .drop-row { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
     .hint { color: #64748b; font-size: 13px; } .ok { color: #15803d; }
-    .ops { display: flex; } .err { color: #b91c1c; }
+    .ops { display: flex; gap: 8px; } .err { color: #b91c1c; }
     .map { width: 100%; height: 320px; border-radius: 8px; overflow: hidden; margin-top: 8px; }
     .map.drawing { outline: 2px solid #7c3aed; }
     .area-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -252,7 +348,26 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   private auth = inject(AuthService);
   private snack = inject(MatSnackBar);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
   private ngZone = inject(NgZone);
+
+  /** Event id when opened as /org/activities/:id/edit; null in create mode. */
+  editId = signal<string | null>(null);
+  /** Event id from the route when opened as .../activities/:id/edit. */
+  private routeEventId: string | null = null;
+  /** Edit data arrived (form + areas + initial camera ready). */
+  private editReady = false;
+  /** ngAfterViewInit ran before edit data arrived — init the map once it does. */
+  private mapPending = false;
+  /** Initial camera framing the event area (edit mode); null → default view. */
+  private pendingView: { center: [number, number]; zoom: number } | null = null;
+  loading = signal(false);
+  /** GPX path already stored on the edited event (kept unless replaced/cleared). */
+  private existingGpxPath: string | null = null;
+  /** Route snapshot of the edited event (to preserve untouched customized areas). */
+  private initialRoute: EventRoute | null = null;
+  /** True while a file is dragged over the drop zone (focus highlight). */
+  dragOver = signal(false);
 
   orgs = signal<Organization[]>([]);
   staff = signal<PermanentStaff[]>([]);
@@ -282,19 +397,64 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   private drawStart: maplibregl.LngLat | null = null;
   private preview: EventRect | null = null;
 
-  form = this.fb.group({
-    orgId: ['', Validators.required],
-    name: ['', [Validators.required, Validators.minLength(3)]],
-    startTime: ['', Validators.required],
-    endTime: ['', Validators.required],
-    managerId: ['', Validators.required],
-  });
+  form = this.fb.group(
+    {
+      orgId: ['', Validators.required],
+      name: ['', [Validators.required, Validators.minLength(3)]],
+      startDate: [null as Date | null, Validators.required],
+      startClock: [null as Date | null],
+      endDate: [null as Date | null, Validators.required],
+      endClock: [null as Date | null],
+      managerId: ['', Validators.required],
+    },
+    { validators: endAfterStart },
+  );
 
   isSuper(): boolean {
     return this.auth.isSuperAdmin();
   }
 
+  isEdit(): boolean {
+    return this.editId() !== null;
+  }
+
+  /** Route coverage from a fresh upload, the stored GPX, or drawn rects. */
+  hasRoute(): boolean {
+    return !!this.gpxFile() || !!this.existingGpxPath || this.rects().length > 0;
+  }
+
+  cancelEdit(): void {
+    void this.router.navigate(['/org/activities']);
+  }
+
+  /** Merge a datepicker date with an optional timepicker time into one Date.
+   *  Missing time defaults to 00:00 for start, 23:59 for end. */
+  private combine(date: Date | null, clock: Date | null, isEnd: boolean): Date | null {
+    if (!date || isNaN(date.getTime())) return null;
+    const d = new Date(date);
+    if (clock && !isNaN(clock.getTime())) d.setHours(clock.getHours(), clock.getMinutes(), 0, 0);
+    else if (isEnd) d.setHours(23, 59, 0, 0);
+    else d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  /** Normalize Firestore Timestamp | ISO string | Date to a Date. */
+  private toDate(v: unknown): Date | null {
+    if (!v) return null;
+    if (typeof v === 'object' && v !== null && 'toDate' in v) {
+      try {
+        return (v as { toDate: () => Date }).toDate();
+      } catch {
+        return null;
+      }
+    }
+    const d = new Date(v as string);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
   ngOnInit(): void {
+    this.routeEventId = this.route.snapshot.paramMap.get('id');
+    const id = this.routeEventId;
     const current = this.auth.currentOrgId() ?? '';
     if (this.isSuper()) {
       this.orgSvc.getOrganizations().subscribe({
@@ -303,16 +463,109 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
           const pick = current && orgs.some((o) => o.orgId === current) ? current : (orgs[0]?.orgId ?? '');
           this.form.patchValue({ orgId: pick });
           this.loadStaff(pick);
+          if (id) this.loadForEdit(id);
         },
       });
     } else {
       this.form.patchValue({ orgId: current });
       this.loadStaff(current);
+      if (id) this.loadForEdit(id);
+    }
+  }
+
+  /** Edit mode: prefill the form + areas from the stored event.
+   *  The map is created only after the event data arrives, so its initial
+   *  camera already frames the event area (no default-view flash). */
+  private loadForEdit(id: string): void {
+    this.loading.set(true);
+    const unsub = this.events.watchEvent(id, (e) => {
+      unsub();
+      if (!e) {
+        this.loading.set(false);
+        this.snack.open('האירוע לא נמצא.', 'סגור', { duration: 3500 });
+        void this.router.navigate(['/org/activities']);
+        return;
+      }
+      this.editId.set(id);
+      this.form.patchValue({ orgId: e.orgId, name: e.name, managerId: e.managerId });
+      this.form.get('orgId')?.disable();
+      const start = this.toDate(e.startTime);
+      const end = this.toDate(e.endTime);
+      if (start) this.form.patchValue({ startDate: new Date(start), startClock: new Date(start) });
+      if (end) this.form.patchValue({ endDate: new Date(end), endClock: new Date(end) });
+      this.loadStaff(e.orgId);
+      const r = e.route ?? null;
+      this.initialRoute = r;
+      if (r?.rects?.length) {
+        this.rects.set([...r.rects]);
+      }
+      this.pendingView = this.computeView([...this.rects()]);
+      void (async () => {
+        if (r?.gpxPath) await this.fetchExistingGpx(r.gpxPath);
+        this.pendingView = this.computeView([
+          ...this.rects(),
+          ...(this.gpxArea ? [this.gpxArea] : []),
+        ]);
+        this.editReady = true;
+        this.loading.set(false);
+        if (this.mapPending) {
+          this.mapPending = false;
+          this.initMap();
+        } else {
+          this.ngZone.runOutsideAngular(() => {
+            this.syncAreas();
+            this.syncGpxPreview();
+            this.fitEventArea();
+          });
+        }
+      })();
+    });
+  }
+
+  /** Initial camera framing the given boxes (or null for the default view). */
+  private computeView(boxes: EventRect[]): { center: [number, number]; zoom: number } | null {
+    if (boxes.length === 0) return null;
+    const b = unionBox(boxes);
+    const el = this.mapEl?.nativeElement;
+    const w = el?.clientWidth || 700;
+    const h = el?.clientHeight || 320;
+    const spanLng = Math.max(b.east - b.west, 0.0005);
+    const spanLat = Math.max(b.north - b.south, 0.0005);
+    const zoom =
+      Math.min(
+        Math.log2((w * 360) / (spanLng * 512)),
+        Math.log2((h * 180) / (spanLat * 512)),
+        18,
+      ) - 0.6; // padding margin
+    return {
+      center: [(b.west + b.east) / 2, (b.south + b.north) / 2],
+      zoom: Math.max(5, zoom),
+    };
+  }
+
+  /** Download the stored GPX of the edited event for preview + resize.
+   *  Served by the getGpxPreview Function: direct Storage downloads are
+   *  blocked by bucket CORS on some origins (e.g. localhost during dev). */
+  private async fetchExistingGpx(path: string): Promise<void> {
+    try {
+      const { points, name } = await this.events.getGpxPreview(path);
+      this.existingGpxPath = path;
+      this.gpxName.set(name);
+      if (points.length < 2) return;
+      this.gpxCoords = points;
+      this.gpxPoints.set(points.length);
+      this.gpxFitted = false;
+      this.gpxArea = padRect(bboxOf(points), 500);
+      this.gpxAreaDirty = false;
+    } catch {
+      this.existingGpxPath = path;
+      this.gpxName.set(path.split('/').pop() ?? path);
     }
   }
 
   ngAfterViewInit(): void {
-    this.initMap();
+    if (this.routeEventId && !this.editReady) this.mapPending = true;
+    else this.initMap();
   }
 
   ngOnDestroy(): void {
@@ -374,6 +627,7 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   clearGpx(): void {
     this.gpxFile.set(null);
     this.gpxName.set('');
+    this.existingGpxPath = null;
     this.gpxCoords = [];
     this.gpxPoints.set(0);
     this.gpxFitted = false;
@@ -392,8 +646,10 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
       this.map = new maplibregl.Map({
         container: this.mapEl.nativeElement,
         style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-        center: [35.2137, 31.7683],
-        zoom: 10,
+        // Edit mode: initial camera already frames the event area (computed
+        // from the stored route before the map is created — no default flash).
+        center: this.pendingView?.center ?? [35.2137, 31.7683],
+        zoom: this.pendingView?.zoom ?? 10,
       });
       this.map.addControl(new maplibregl.NavigationControl(), 'top-left');
 
@@ -517,9 +773,64 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
     }
   }
 
+  // ---- style readiness + area framing ----
+
+  /** Callbacks waiting for the style to become ready (flushed on next idle). */
+  private styleReadyQueue: Array<() => void> = [];
+  private styleReadyHooked = false;
+
+  /** Run cb now if the style is ready, else once rendering settles.
+   *  isStyleLoaded() is unreliable right inside the map 'load' handler
+   *  (style churn from label overrides), so all sync/fit paths go through here. */
+  private afterStyleReady(cb: () => void): void {
+    const map = this.map;
+    if (!map) return;
+    if (map.isStyleLoaded()) {
+      cb();
+      return;
+    }
+    if (this.styleReadyQueue.length < 8) this.styleReadyQueue.push(cb);
+    if (this.styleReadyHooked) return;
+    this.styleReadyHooked = true;
+    map.once('idle', () => {
+      this.styleReadyHooked = false;
+      const q = this.styleReadyQueue.splice(0);
+      for (const fn of q) {
+        try {
+          fn();
+        } catch {
+          // map torn down mid-wait — drop
+        }
+      }
+    });
+  }
+
+  /** Frame the event area on the map (edit mode + after GPX load).
+   *  Prefers the GPX area when present, else the combined drawn rects. Once. */
+  private eventAreaFramed = false;
+
+  private fitEventArea(): void {
+    if (!this.map || this.eventAreaFramed) return;
+    const boxes = [...this.rects()];
+    if (this.gpxArea) boxes.push(this.gpxArea);
+    if (boxes.length === 0) return;
+    if (!this.map.isStyleLoaded()) {
+      this.afterStyleReady(() => this.fitEventArea());
+      return;
+    }
+    const b = unionBox(boxes);
+    this.map.fitBounds([[b.west, b.south], [b.east, b.north]], { padding: 40, duration: 0 });
+    this.eventAreaFramed = true;
+  }
+
   /** Draw the selected GPX track plus its (resizable) area. */
   private syncGpxPreview(): void {
-    if (!this.map || !this.map.isStyleLoaded() || this.gpxCoords.length < 2 || !this.gpxArea) return;
+    if (!this.map) return;
+    if (!this.map.isStyleLoaded()) {
+      this.afterStyleReady(() => this.syncGpxPreview());
+      return;
+    }
+    if (this.gpxCoords.length < 2 || !this.gpxArea) return;
     const box = this.gpxArea;
     const data = {
       type: 'FeatureCollection',
@@ -551,9 +862,15 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   private fitGpx(): void {
-    if (!this.map || !this.map.isStyleLoaded() || this.gpxCoords.length < 2 || this.gpxFitted || !this.gpxArea) return;
+    if (!this.map || this.gpxFitted) return;
+    if (!this.map.isStyleLoaded()) {
+      this.afterStyleReady(() => this.fitGpx());
+      return;
+    }
+    if (this.gpxCoords.length < 2 || !this.gpxArea) return;
     const box = this.gpxArea;
-    this.map.fitBounds([[box.west, box.south], [box.east, box.north]], { padding: 40 });
+    // duration 0: jump immediately (animated ease freezes when the tab renders in background).
+    this.map.fitBounds([[box.west, box.south], [box.east, box.north]], { padding: 40, duration: 0 });
     this.gpxFitted = true;
   }
 
@@ -650,7 +967,11 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   /** Render all drawn rects (+ the in-progress preview) as GeoJSON polygons.
    *  The rect under edit (and the preview replacing it) renders orange. */
   private syncAreas(): void {
-    if (!this.map || !this.map.isStyleLoaded()) return;
+    if (!this.map) return;
+    if (!this.map.isStyleLoaded()) {
+      this.afterStyleReady(() => this.syncAreas());
+      return;
+    }
     const editing = this.editingIndex();
     const feats: DrawnFeature[] = this.rects().map((r, k) => ({
       type: 'Feature',
@@ -679,25 +1000,53 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
 
   async submit(): Promise<void> {
     if (this.form.invalid) return;
+    const v = this.form.getRawValue();
+    const start = this.combine(v.startDate ?? null, v.startClock ?? null, false);
+    const end = this.combine(v.endDate ?? null, v.endClock ?? null, true);
+    if (!start || !end) {
+      this.error.set('יש לבחור תאריך ושעה להתחלה ולסיום.');
+      return;
+    }
+    if (end.getTime() <= start.getTime()) {
+      this.error.set('שעת הסיום חייבת להיות אחרי שעת ההתחלה.');
+      return;
+    }
     this.saving.set(true);
     this.error.set(null);
     try {
-      const v = this.form.value;
       const orgId = String(v.orgId ?? '');
-      let gpxPath: string | undefined;
       const file = this.gpxFile();
-      if (file) {
-        gpxPath = await this.events.uploadGpx(orgId, file);
+      // New upload wins; otherwise keep the stored GPX of the edited event.
+      const gpxPath = file ? await this.events.uploadGpx(orgId, file) : (this.existingGpxPath ?? undefined);
+      const route = gpxPath
+        ? {
+            gpxPath,
+            ...(this.gpxAreaDirty && this.gpxArea
+              ? { rects: [this.gpxArea] }
+              : !file && this.initialRoute?.rects?.length
+                ? { rects: this.initialRoute.rects }
+                : {}),
+          }
+        : { rects: this.rects() };
+      if (this.editId()) {
+        await this.events.updateEvent(this.editId()!, {
+          name: String(v.name ?? ''),
+          managerId: String(v.managerId ?? ''),
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          route,
+        });
+        this.snack.open('השינויים נשמרו.', 'אישור', { duration: 2500 });
+        void this.router.navigate(['/org/activities']);
+        return;
       }
       const eventId = await this.events.createEvent({
         orgId,
         name: String(v.name ?? ''),
         managerId: String(v.managerId ?? ''),
-        startTime: new Date(String(v.startTime)).toISOString(),
-        endTime: new Date(String(v.endTime)).toISOString(),
-        ...(gpxPath
-          ? { gpxPath, ...(this.gpxAreaDirty && this.gpxArea ? { rects: [this.gpxArea] } : {}) }
-          : { rects: this.rects() }),
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        ...route,
       });
       this.snack.open('האירוע נוצר.', 'אישור', { duration: 2500 });
       void this.router.navigate(['/org/activities', eventId, 'invites']);
@@ -712,6 +1061,6 @@ export class ActivityCreateComponent implements OnInit, AfterViewInit, OnDestroy
   private toHebrew(msg: string): string {
     if (msg.includes('quota') || msg.includes('resource-exhausted')) return 'מכסת האירועים הפעילים נוצלה — לא ניתן ליצור אירוע נוסף.';
     if (msg.includes('license')) return 'רישיון הארגון אינו פעיל או שפג תוקפו — לא ניתן ליצור אירוע.';
-    return 'יצירת האירוע נכשלה: ' + msg;
+    return (this.isEdit() ? 'שמירת השינויים נכשלה: ' : 'יצירת האירוע נכשלה: ') + msg;
   }
 }

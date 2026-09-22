@@ -80,6 +80,11 @@ import { MatDialog } from '@angular/material/dialog';
             <td mat-cell *matCellDef="let e">
               <button mat-button color="primary" [routerLink]="['/org/activities', e.eventId, 'invites']">הזמנות</button>
               <button mat-button color="accent" [routerLink]="['/command', e.eventId]">חפ״ק</button>
+              @if (e.status === 'PLANNED' || e.status === 'ACTIVE') {
+                <button mat-icon-button color="primary" [routerLink]="['/org/activities', e.eventId, 'edit']" title="עריכת אירוע">
+                  <mat-icon>edit</mat-icon>
+                </button>
+              }
               @if (e.status !== 'COMPLETED') {
                 <button mat-icon-button color="warn" (click)="terminate(e)" title="סיום אירוע לכולם">
                   <mat-icon>stop_circle</mat-icon>

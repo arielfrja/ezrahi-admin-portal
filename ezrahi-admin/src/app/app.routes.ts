@@ -29,6 +29,7 @@ export const routes: Routes = [
       { path: 'staff', component: StaffListComponent },
       { path: 'activities', component: ActivityListComponent },
       { path: 'activities/create', component: ActivityCreateComponent },
+      { path: 'activities/:id/edit', component: ActivityCreateComponent },
       { path: 'activities/:id/invites', component: InvitesGeneratorComponent },
       { path: '', redirectTo: 'activities', pathMatch: 'full' },
     ],

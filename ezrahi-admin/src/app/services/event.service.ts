@@ -53,6 +53,12 @@ export class EventService {
     return (res.data as { eventId: string }).eventId;
   }
 
+  /** Server-side GPX preview (avoids Storage CORS limits on dev origins). */
+  async getGpxPreview(gpxPath: string): Promise<{ points: Array<[number, number]>; name: string }> {
+    const fn = httpsCallable(this.fb.functions, 'getGpxPreview');
+    const res = await fn({ gpxPath });
+    return res.data as { points: Array<[number, number]>; name: string };
+  }
   /** Upload a GPX track; returns the storage path for createEvent.gpxPath. */
   async uploadGpx(orgId: string, file: File): Promise<string> {
     const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');

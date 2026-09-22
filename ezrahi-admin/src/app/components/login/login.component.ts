@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -74,6 +74,13 @@ export class LoginComponent {
     this.loginForm = this.fb.group({
       email: ['', [Validators.required, Validators.email]],
       password: ['', [Validators.required, Validators.minLength(6)]]
+    });
+    // Already signed in (e.g. reopened /login): skip to the role home.
+    effect(() => {
+      if (!this.auth.isLoading() && this.auth.currentUser()) {
+        const home = this.auth.userRole() === 'super-admin' ? '/super-admin/organizations' : '/org';
+        void this.router.navigate([home]);
+      }
     });
   }
 
