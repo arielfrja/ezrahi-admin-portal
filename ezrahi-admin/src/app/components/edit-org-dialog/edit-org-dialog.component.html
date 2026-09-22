@@ -80,14 +80,14 @@
 
     <button mat-stroked-button color="primary" (click)="addAdmin(inviteEmail)" [disabled]="adminsBusy() || !inviteEmail.trim()">
       @if (adminsBusy()) {
-        <mat-spinner diameter="18"></mat-spinner>
+        <app-loader size="sm"></app-loader>
       } @else {
         <mat-icon>person_add</mat-icon>
       }
       הוספה / הזמנה
     </button>
     @if (usersLoading()) {
-      <p class="loading-hint"><mat-spinner diameter="18"></mat-spinner> טוען משתמשים…</p>
+      <p class="loading-hint"><app-loader size="sm"></app-loader> טוען משתמשים…</p>
     }
   </div>
 </mat-dialog-content>
@@ -96,7 +96,7 @@
   <button mat-button (click)="onCancel()" [disabled]="isSubmitting()">ביטול</button>
   <button mat-flat-button color="primary" (click)="onSubmit()" [disabled]="editForm.invalid || isSubmitting()">
     @if (isSubmitting()) {
-      <mat-spinner diameter="20"></mat-spinner>
+      <app-loader size="sm" color="#fff"></app-loader>
     } @else {
       שמירה
     }

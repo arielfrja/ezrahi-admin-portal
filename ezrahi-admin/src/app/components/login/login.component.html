@@ -27,7 +27,7 @@
 
         <button mat-flat-button color="primary" class="full-width submit-btn" [disabled]="isSubmitting() || loginForm.invalid">
           @if (isSubmitting()) {
-            <mat-spinner diameter="20"></mat-spinner>
+            <app-loader size="sm" color="#fff"></app-loader>
           } @else {
             התחברות
           }
@@ -36,7 +36,7 @@
         <button mat-button color="primary" class="full-width forgot-btn" type="button"
                 (click)="onForgotPassword()" [disabled]="isSendingReset()">
           @if (isSendingReset()) {
-            <mat-spinner diameter="18"></mat-spinner>
+            <app-loader size="sm"></app-loader>
           } @else {
             שכחתי סיסמה — שלח קישור איפוס
           }

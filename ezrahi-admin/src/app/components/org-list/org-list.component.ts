@@ -10,7 +10,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { AppLoaderComponent } from '../app-loader/app-loader.component';
 import { MatToolbarModule } from '@angular/material/toolbar';
 
 import { RegisterOrgDialogComponent } from '../register-org-dialog/register-org-dialog.component';
@@ -36,7 +36,7 @@ export const LICENSE_STATUS_LABELS: Record<Organization['license']['status'], st
     MatChipsModule,
     MatDialogModule,
     MatSnackBarModule,
-    MatProgressSpinnerModule,
+    AppLoaderComponent,
     MatToolbarModule
   ],
   templateUrl: './org-list.component.html',

@@ -8,7 +8,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { AppLoaderComponent } from '../app-loader/app-loader.component';
 import { OrganizationService } from '../../services/organization.service';
 import { FirebaseService } from '../../services/firebase.service';
 import { sendPasswordResetEmail } from 'firebase/auth';
@@ -27,7 +27,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
     MatDatepickerModule,
     MatNativeDateModule,
     MatButtonModule,
-    MatProgressSpinnerModule,
+    AppLoaderComponent,
     MatSnackBarModule
   ],
   templateUrl: './register-org-dialog.component.html',

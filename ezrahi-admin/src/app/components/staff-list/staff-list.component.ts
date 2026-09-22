@@ -9,7 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { AppLoaderComponent } from '../app-loader/app-loader.component';
 import { MatCardModule } from '@angular/material/card';
 import { StaffService } from '../../services/staff.service';
 import { OrganizationService } from '../../services/organization.service';
@@ -32,7 +32,7 @@ import { Organization } from '../../models/organization.model';
     MatSelectModule,
     MatSlideToggleModule,
     MatSnackBarModule,
-    MatProgressSpinnerModule,
+    AppLoaderComponent,
     MatCardModule,
   ],
   template: `
@@ -78,7 +78,7 @@ import { Organization } from '../../models/organization.model';
           </mat-form-field>
           <div class="actions">
             <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving()">
-              @if (saving()) { <mat-spinner diameter="20"></mat-spinner> } @else { {{ editingId() ? 'שמור עריכה' : 'הוסף עובד' }} }
+              @if (saving()) { <app-loader size="sm" color="#fff"></app-loader> } @else { {{ editingId() ? 'שמור עריכה' : 'הוסף עובד' }} }
             </button>
             @if (editingId()) {
               <button mat-button type="button" (click)="cancelEdit()">ביטול</button>
@@ -89,7 +89,7 @@ import { Organization } from '../../models/organization.model';
 
       <div class="mat-elevation-z2 table-wrap">
         @if (loading()) {
-          <div class="loading-block"><mat-spinner diameter="32"></mat-spinner> טוען עובדים…</div>
+          <div class="loading-block"><app-loader size="lg"></app-loader> טוען עובדים…</div>
         } @else {
         <table mat-table [dataSource]="staff()">
           <ng-container matColumnDef="name">

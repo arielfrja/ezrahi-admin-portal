@@ -8,11 +8,11 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { AppLoaderComponent } from '../app-loader/app-loader.component';
 import { Observable, map, startWith } from 'rxjs';
 import { Organization } from '../../models/organization.model';
 import { AdminUserInfo, OrganizationService } from '../../services/organization.service';
@@ -47,7 +47,7 @@ function toDate(value: unknown): Date {
     MatDatepickerModule,
     MatNativeDateModule,
     MatButtonModule,
-    MatProgressSpinnerModule,
+    AppLoaderComponent,
     MatAutocompleteModule,
     MatChipsModule,
     MatIconModule,

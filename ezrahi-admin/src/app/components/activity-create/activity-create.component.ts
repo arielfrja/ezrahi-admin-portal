@@ -9,8 +9,8 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
+import { AppLoaderComponent } from '../app-loader/app-loader.component';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatTimepickerModule } from '@angular/material/timepicker';
@@ -155,8 +155,8 @@ function endAfterStart(group: AbstractControl): ValidationErrors | null {
     MatButtonModule,
     MatCardModule,
     MatSnackBarModule,
-    MatProgressSpinnerModule,
     MatIconModule,
+    AppLoaderComponent,
     MatDatepickerModule,
     MatNativeDateModule,
     MatTimepickerModule,
@@ -278,7 +278,7 @@ function endAfterStart(group: AbstractControl): ValidationErrors | null {
             </div>
             <div #mapEl class="map" [class.drawing]="drawMode()"></div>
             @if (loading()) {
-              <p class="hint loading-hint"><mat-spinner diameter="18"></mat-spinner> טוען נתוני אירוע…</p>
+              <p class="hint loading-hint"><app-loader size="sm"></app-loader> טוען נתוני אירוע…</p>
             } @else if (editingIndex() !== null) {
               <p class="hint">מצב עריכה: גררו מלבן חדש במקום שטח {{ editingIndex()! + 1 }}</p>
             } @else if (drawMode()) {
@@ -304,7 +304,7 @@ function endAfterStart(group: AbstractControl): ValidationErrors | null {
 
           <div class="full ops">
             <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving() || !hasRoute()">
-              @if (saving()) { <mat-spinner diameter="20"></mat-spinner> } @else { {{ isEdit() ? 'שמור שינויים' : 'צור אירוע והמשך להזמנות' }} }
+              @if (saving()) { <app-loader size="sm" color="#fff"></app-loader> } @else { {{ isEdit() ? 'שמור שינויים' : 'צור אירוע והמשך להזמנות' }} }
             </button>
             @if (isEdit()) {
               <button mat-button type="button" (click)="cancelEdit()">ביטול</button>

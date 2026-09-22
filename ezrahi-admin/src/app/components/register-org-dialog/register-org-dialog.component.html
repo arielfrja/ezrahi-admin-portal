@@ -77,7 +77,7 @@
   <button mat-button (click)="onCancel()" [disabled]="isSubmitting()">ביטול</button>
   <button mat-flat-button color="primary" (click)="onSubmit()" [disabled]="orgForm.invalid || isSubmitting()">
     @if (isSubmitting()) {
-      <mat-spinner diameter="20"></mat-spinner>
+      <app-loader size="sm" color="#fff"></app-loader>
     } @else {
       רישום
     }

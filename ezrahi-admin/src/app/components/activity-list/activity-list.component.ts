@@ -6,7 +6,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { AppLoaderComponent } from '../app-loader/app-loader.component';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { EventService } from '../../services/event.service';
@@ -29,7 +29,7 @@ import { MatDialog } from '@angular/material/dialog';
     MatIconModule,
     MatChipsModule,
     MatSnackBarModule,
-    MatProgressSpinnerModule,
+    AppLoaderComponent,
     MatFormFieldModule,
     MatSelectModule,
   ],
@@ -63,7 +63,7 @@ import { MatDialog } from '@angular/material/dialog';
 
       <div class="mat-elevation-z2 table-wrap">
         @if (loading()) {
-          <div class="loading-block"><mat-spinner diameter="32"></mat-spinner> טוען אירועים…</div>
+          <div class="loading-block"><app-loader size="lg"></app-loader> טוען אירועים…</div>
         } @else {
         <table mat-table [dataSource]="events()">
           <ng-container matColumnDef="name">
@@ -92,7 +92,7 @@ import { MatDialog } from '@angular/material/dialog';
               }
               @if (e.status !== 'COMPLETED') {
                 @if (terminatingId() === e.eventId) {
-                  <mat-spinner diameter="20"></mat-spinner>
+                  <app-loader size="sm"></app-loader>
                 } @else {
                   <button mat-icon-button color="warn" (click)="terminate(e)" title="סיום אירוע לכולם">
                     <mat-icon>stop_circle</mat-icon>

@@ -5,7 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { AppLoaderComponent } from '../app-loader/app-loader.component';
 import { MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import * as maplibregl from 'maplibre-gl';
@@ -35,7 +35,7 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
     MatCardModule,
     MatSnackBarModule,
     MatTooltipModule,
-    MatProgressSpinnerModule,
+    AppLoaderComponent,
   ],
   template: `
     <div class="hq" dir="rtl">
@@ -49,12 +49,12 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
         </div>
         <div class="ops">
           <label class="gpx-drop" [class.busy]="routeBusy()" (dragover)="$event.preventDefault()" (drop)="onGpxDrop($event)" matTooltip="גרור קובץ GPX לעדכון המסלול">
-            @if (routeBusy()) { <mat-spinner diameter="18"></mat-spinner> } @else { <mat-icon>upload</mat-icon> }
+            @if (routeBusy()) { <app-loader size="sm"></app-loader> } @else { <mat-icon>upload</mat-icon> }
             {{ routeBusy() ? 'מעלה מסלול…' : 'עדכן מסלול (GPX)' }}
             <input type="file" accept=".gpx" hidden (change)="onGpxFile($event)" [disabled]="routeBusy()" />
           </label>
           <button mat-flat-button color="warn" class="kill" (click)="killSwitch()" [disabled]="archived() || killing()">
-            @if (killing()) { <mat-spinner diameter="20"></mat-spinner> } @else { <mat-icon>stop_circle</mat-icon> }
+            @if (killing()) { <app-loader size="sm" color="#fff"></app-loader> } @else { <mat-icon>stop_circle</mat-icon> }
             {{ killing() ? 'מסיים…' : 'סיום פעילות וסגירת שידורים' }}
           </button>
         </div>
@@ -64,7 +64,7 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
         <div class="map-wrap">
           <div #mapEl class="map"></div>
           @if (!mapReady()) {
-            <div class="map-loading"><mat-spinner diameter="36"></mat-spinner> טוען מפה…</div>
+            <div class="map-loading"><app-loader size="lg"></app-loader> טוען מפה…</div>
           }
         </div>
 
@@ -82,7 +82,7 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
               <p class="meta">{{ inc.category }} · {{ inc.status }}</p>
               <div class="row">
                 @if (statusBusyId() === inc.incidentId) {
-                  <mat-spinner diameter="20"></mat-spinner>
+                  <app-loader size="sm"></app-loader>
                 } @else {
                   <button mat-button color="primary" (click)="setStatus(inc, 'IN_PROGRESS'); $event.stopPropagation()">העבר לטיפול</button>
                   <button mat-button color="warn" (click)="setStatus(inc, 'RESOLVED'); $event.stopPropagation()">סמן כטופל וסגור</button>

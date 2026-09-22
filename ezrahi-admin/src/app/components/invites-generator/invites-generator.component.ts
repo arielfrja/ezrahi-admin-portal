@@ -11,7 +11,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { AppLoaderComponent } from '../app-loader/app-loader.component';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { InviteService } from '../../services/invite.service';
 import { EventService } from '../../services/event.service';
@@ -35,7 +35,7 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
     MatIconModule,
     MatSnackBarModule,
     MatSlideToggleModule,
-    MatProgressSpinnerModule,
+    AppLoaderComponent,
   ],
   template: `
     <div class="page" dir="rtl">
@@ -60,7 +60,7 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
           </mat-form-field>
           <div class="ops">
             <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving()">
-              @if (saving()) { <mat-spinner diameter="20"></mat-spinner> } @else { הפק קישור }
+              @if (saving()) { <app-loader size="sm" color="#fff"></app-loader> } @else { הפק קישור }
             </button>
           </div>
         </form>
@@ -79,7 +79,7 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
 
       <div class="mat-elevation-z2 table-wrap">
         @if (loading()) {
-          <div class="loading-block"><mat-spinner diameter="32"></mat-spinner> טוען הזמנות…</div>
+          <div class="loading-block"><app-loader size="lg"></app-loader> טוען הזמנות…</div>
         } @else {
         <table mat-table [dataSource]="invites()">
           <ng-container matColumnDef="code">

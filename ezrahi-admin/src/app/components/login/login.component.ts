@@ -11,8 +11,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { AppLoaderComponent } from '../app-loader/app-loader.component';
 
 /** Firebase Auth error codes mapped to Hebrew messages. */
 function toHebrewError(err: unknown): string {
@@ -52,8 +52,8 @@ function toHebrewError(err: unknown): string {
     MatInputModule,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule,
-    MatSnackBarModule
+    MatSnackBarModule,
+    AppLoaderComponent
   ],
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss']
