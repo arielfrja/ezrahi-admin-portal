@@ -37,6 +37,15 @@ table {
   width: 100%;
 }
 
+.loading-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  color: #64748b;
+}
+
 .status-badge {
   padding: 4px 10px;
   border-radius: 12px;

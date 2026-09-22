@@ -10,6 +10,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatToolbarModule } from '@angular/material/toolbar';
 
 import { RegisterOrgDialogComponent } from '../register-org-dialog/register-org-dialog.component';
@@ -35,6 +36,7 @@ export const LICENSE_STATUS_LABELS: Record<Organization['license']['status'], st
     MatChipsModule,
     MatDialogModule,
     MatSnackBarModule,
+    MatProgressSpinnerModule,
     MatToolbarModule
   ],
   templateUrl: './org-list.component.html',
@@ -43,6 +45,8 @@ export const LICENSE_STATUS_LABELS: Record<Organization['license']['status'], st
 export class OrgListComponent implements OnInit {
   displayedColumns: string[] = ['name', 'orgId', 'admins', 'status', 'validUntil', 'activeEvents', 'maxEvents', 'actions'];
   organizations = signal<Organization[]>([]);
+  loading = signal(true);
+  busyId = signal<string | null>(null);
   /** orgId -> live ACTIVE event count (Task 4.1). */
   activeCounts = signal<Record<string, number>>({});
 
@@ -58,6 +62,7 @@ export class OrgListComponent implements OnInit {
     this.orgService.getOrganizations().subscribe({
       next: (data) => {
         this.organizations.set(data);
+        this.loading.set(false);
         // Refresh active-event counts (best-effort, cached per org).
         for (const org of data) {
           this.orgService.getActiveEventCount(org.orgId).then(
@@ -66,11 +71,14 @@ export class OrgListComponent implements OnInit {
           );
         }
       },
-      error: (err: Error) => this.snackBar.open(
-        'שגיאה בטעינת הארגונים: ' + err.message,
-        'סגור',
-        { duration: 4000 }
-      )
+      error: (err: Error) => {
+        this.loading.set(false);
+        this.snackBar.open(
+          'שגיאה בטעינת הארגונים: ' + err.message,
+          'סגור',
+          { duration: 4000 }
+        );
+      },
     });
   }
 
@@ -152,12 +160,15 @@ export class OrgListComponent implements OnInit {
 
     dialogRef.afterClosed().subscribe(async (confirmed: boolean) => {
       if (confirmed) {
+        this.busyId.set(org.orgId);
         try {
           await this.orgService.updateLicenseStatus(org.orgId, newStatus);
           this.snackBar.open('הסטטוס עודכן בהצלחה.', 'אישור', { duration: 2500 });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'הפעולה נכשלה.';
           this.snackBar.open(message, 'סגור', { duration: 3500 });
+        } finally {
+          this.busyId.set(null);
         }
       }
     });
@@ -174,12 +185,15 @@ export class OrgListComponent implements OnInit {
 
     dialogRef.afterClosed().subscribe(async (confirmed: boolean) => {
       if (confirmed) {
+        this.busyId.set(org.orgId);
         try {
           await this.orgService.deleteOrganization(org.orgId);
           this.snackBar.open('הארגון נמחק בהצלחה.', 'אישור', { duration: 2500 });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'הפעולה נכשלה.';
           this.snackBar.open(message, 'סגור', { duration: 3500 });
+        } finally {
+          this.busyId.set(null);
         }
       }
     });

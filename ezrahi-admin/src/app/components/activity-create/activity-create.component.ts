@@ -278,7 +278,7 @@ function endAfterStart(group: AbstractControl): ValidationErrors | null {
             </div>
             <div #mapEl class="map" [class.drawing]="drawMode()"></div>
             @if (loading()) {
-              <p class="hint">טוען נתוני אירוע…</p>
+              <p class="hint loading-hint"><mat-spinner diameter="18"></mat-spinner> טוען נתוני אירוע…</p>
             } @else if (editingIndex() !== null) {
               <p class="hint">מצב עריכה: גררו מלבן חדש במקום שטח {{ editingIndex()! + 1 }}</p>
             } @else if (drawMode()) {
@@ -327,6 +327,7 @@ function endAfterStart(group: AbstractControl): ValidationErrors | null {
     .drop.dragging { border-color: #7c3aed; background: #f5f3ff; }
     .drop-row { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
     .hint { color: #64748b; font-size: 13px; } .ok { color: #15803d; }
+    .loading-hint { display: flex; align-items: center; gap: 8px; }
     .ops { display: flex; gap: 8px; } .err { color: #b91c1c; }
     .map { width: 100%; height: 320px; border-radius: 8px; overflow: hidden; margin-top: 8px; }
     .map.drawing { outline: 2px solid #7c3aed; }

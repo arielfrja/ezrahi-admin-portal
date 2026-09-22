@@ -11,6 +11,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { InviteService } from '../../services/invite.service';
 import { EventService } from '../../services/event.service';
@@ -34,6 +35,7 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
     MatIconModule,
     MatSnackBarModule,
     MatSlideToggleModule,
+    MatProgressSpinnerModule,
   ],
   template: `
     <div class="page" dir="rtl">
@@ -58,7 +60,7 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
           </mat-form-field>
           <div class="ops">
             <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving()">
-              הפק קישור
+              @if (saving()) { <mat-spinner diameter="20"></mat-spinner> } @else { הפק קישור }
             </button>
           </div>
         </form>
@@ -76,6 +78,9 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
       </mat-card>
 
       <div class="mat-elevation-z2 table-wrap">
+        @if (loading()) {
+          <div class="loading-block"><mat-spinner diameter="32"></mat-spinner> טוען הזמנות…</div>
+        } @else {
         <table mat-table [dataSource]="invites()">
           <ng-container matColumnDef="code">
             <th mat-header-cell *matHeaderCellDef>קוד</th>
@@ -96,7 +101,7 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
           <ng-container matColumnDef="active">
             <th mat-header-cell *matHeaderCellDef>פעיל</th>
             <td mat-cell *matCellDef="let i">
-              <mat-slide-toggle [checked]="i.active" (change)="toggle(i, $event.checked)"></mat-slide-toggle>
+              <mat-slide-toggle [checked]="i.active" [disabled]="busyCode() === i.code" (change)="toggle(i, $event.checked)"></mat-slide-toggle>
             </td>
           </ng-container>
           <ng-container matColumnDef="share">
@@ -110,6 +115,7 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
           <tr mat-header-row *matHeaderRowDef="cols"></tr>
           <tr mat-row *matRowDef="let row; columns: cols;"></tr>
         </table>
+        }
       </div>
     </div>
   `,
@@ -125,6 +131,7 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
     .row { display: flex; gap: 8px; margin-top: 8px; }
     .table-wrap { background: #fff; border-radius: 8px; overflow: hidden; }
     table { width: 100%; }
+    .loading-block { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px; color: #64748b; }
   `],
 })
 export class InvitesGeneratorComponent implements OnInit {
@@ -140,6 +147,8 @@ export class InvitesGeneratorComponent implements OnInit {
   event = signal<FieldEvent | null>(null);
   eventId = signal<string>('');
   saving = signal(false);
+  loading = signal(true);
+  busyCode = signal<string | null>(null);
   lastCode = signal<string>('');
 
   form = this.fb.group({
@@ -154,8 +163,14 @@ export class InvitesGeneratorComponent implements OnInit {
     this.eventId.set(id);
     this.events.watchEvent(id, (e) => this.event.set(e));
     this.invitesSvc.watchInvites(id).subscribe({
-      next: (list) => this.invites.set(list),
-      error: (e: Error) => this.snack.open('שגיאה בטעינת הזמנות: ' + e.message, 'סגור', { duration: 3500 }),
+      next: (list) => {
+        this.invites.set(list);
+        this.loading.set(false);
+      },
+      error: (e: Error) => {
+        this.snack.open('שגיאה בטעינת הזמנות: ' + e.message, 'סגור', { duration: 3500 });
+        this.loading.set(false);
+      },
     });
     this.onRole('guide');
   }
@@ -220,10 +235,13 @@ export class InvitesGeneratorComponent implements OnInit {
   }
 
   async toggle(i: RoleInvite, active: boolean): Promise<void> {
+    this.busyCode.set(i.code);
     try {
       await this.invitesSvc.setInviteActive(this.eventId(), i.code, active);
     } catch {
       this.snack.open('עדכון נכשל.', 'סגור', { duration: 3000 });
+    } finally {
+      this.busyCode.set(null);
     }
   }
 }

@@ -9,6 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatCardModule } from '@angular/material/card';
 import { StaffService } from '../../services/staff.service';
 import { OrganizationService } from '../../services/organization.service';
@@ -31,6 +32,7 @@ import { Organization } from '../../models/organization.model';
     MatSelectModule,
     MatSlideToggleModule,
     MatSnackBarModule,
+    MatProgressSpinnerModule,
     MatCardModule,
   ],
   template: `
@@ -76,7 +78,7 @@ import { Organization } from '../../models/organization.model';
           </mat-form-field>
           <div class="actions">
             <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving()">
-              {{ editingId() ? 'שמור עריכה' : 'הוסף עובד' }}
+              @if (saving()) { <mat-spinner diameter="20"></mat-spinner> } @else { {{ editingId() ? 'שמור עריכה' : 'הוסף עובד' }} }
             </button>
             @if (editingId()) {
               <button mat-button type="button" (click)="cancelEdit()">ביטול</button>
@@ -86,6 +88,9 @@ import { Organization } from '../../models/organization.model';
       </mat-card>
 
       <div class="mat-elevation-z2 table-wrap">
+        @if (loading()) {
+          <div class="loading-block"><mat-spinner diameter="32"></mat-spinner> טוען עובדים…</div>
+        } @else {
         <table mat-table [dataSource]="staff()">
           <ng-container matColumnDef="name">
             <th mat-header-cell *matHeaderCellDef>שם</th>
@@ -106,7 +111,7 @@ import { Organization } from '../../models/organization.model';
           <ng-container matColumnDef="active">
             <th mat-header-cell *matHeaderCellDef>פעיל</th>
             <td mat-cell *matCellDef="let s">
-              <mat-slide-toggle [checked]="s.active" (change)="toggleActive(s, $event.checked)"></mat-slide-toggle>
+              <mat-slide-toggle [checked]="s.active" [disabled]="busyId() === s.staffId" (change)="toggleActive(s, $event.checked)"></mat-slide-toggle>
             </td>
           </ng-container>
           <ng-container matColumnDef="ops">
@@ -120,6 +125,7 @@ import { Organization } from '../../models/organization.model';
           <tr mat-header-row *matHeaderRowDef="cols"></tr>
           <tr mat-row *matRowDef="let row; columns: cols;"></tr>
         </table>
+        }
       </div>
     </div>
   `,
@@ -133,6 +139,7 @@ import { Organization } from '../../models/organization.model';
     .actions { display: flex; gap: 8px; }
     .table-wrap { background: #fff; border-radius: 8px; overflow: hidden; }
     table { width: 100%; }
+    .loading-block { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px; color: #64748b; }
     @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
   `],
 })
@@ -149,6 +156,8 @@ export class StaffListComponent implements OnInit {
   orgs = signal<Organization[]>([]);
   orgId = signal<string>(this.auth.currentOrgId() ?? '');
   saving = signal(false);
+  loading = signal(true);
+  busyId = signal<string | null>(null);
   editingId = signal<string | null>(null);
   private unsub: (() => void) | null = null;
 
@@ -185,9 +194,16 @@ export class StaffListComponent implements OnInit {
   load(): void {
     const id = this.orgId();
     if (!id) return;
+    this.loading.set(true);
     this.staffSvc.watchStaff(id).subscribe({
-      next: (list) => this.staff.set(list),
-      error: (e: Error) => this.snack.open('שגיאה בטעינת עובדים: ' + e.message, 'סגור', { duration: 3500 }),
+      next: (list) => {
+        this.staff.set(list);
+        this.loading.set(false);
+      },
+      error: (e: Error) => {
+        this.snack.open('שגיאה בטעינת עובדים: ' + e.message, 'סגור', { duration: 3500 });
+        this.loading.set(false);
+      },
     });
   }
 
@@ -241,10 +257,13 @@ export class StaffListComponent implements OnInit {
   }
 
   async toggleActive(s: PermanentStaff, active: boolean): Promise<void> {
+    this.busyId.set(s.staffId);
     try {
       await this.staffSvc.setActive(this.orgId(), s.staffId, active);
     } catch (e: unknown) {
       this.snack.open('עדכון נכשל.', 'סגור', { duration: 3000 });
+    } finally {
+      this.busyId.set(null);
     }
   }
 }

@@ -1,12 +1,14 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { Router } from '@angular/router';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AuthService } from '../../services/auth.service';
 
 /** Root landing: sends super-admins to /super-admin, org-admins to /org. */
 @Component({
   selector: 'app-role-redirect',
   standalone: true,
-  template: `<p style="padding:24px">טוען…</p>`,
+  imports: [MatProgressSpinnerModule],
+  template: `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:48px;color:#64748b"><mat-spinner diameter="32"></mat-spinner> טוען…</div>`,
 })
 export class RoleRedirectComponent implements OnInit {
   private auth = inject(AuthService);

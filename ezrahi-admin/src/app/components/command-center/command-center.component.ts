@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import * as maplibregl from 'maplibre-gl';
@@ -34,6 +35,7 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
     MatCardModule,
     MatSnackBarModule,
     MatTooltipModule,
+    MatProgressSpinnerModule,
   ],
   template: `
     <div class="hq" dir="rtl">
@@ -46,12 +48,14 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
           }
         </div>
         <div class="ops">
-          <label class="gpx-drop" (dragover)="$event.preventDefault()" (drop)="onGpxDrop($event)" matTooltip="גרור קובץ GPX לעדכון המסלול">
-            <mat-icon>upload</mat-icon> עדכן מסלול (GPX)
-            <input type="file" accept=".gpx" hidden (change)="onGpxFile($event)" />
+          <label class="gpx-drop" [class.busy]="routeBusy()" (dragover)="$event.preventDefault()" (drop)="onGpxDrop($event)" matTooltip="גרור קובץ GPX לעדכון המסלול">
+            @if (routeBusy()) { <mat-spinner diameter="18"></mat-spinner> } @else { <mat-icon>upload</mat-icon> }
+            {{ routeBusy() ? 'מעלה מסלול…' : 'עדכן מסלול (GPX)' }}
+            <input type="file" accept=".gpx" hidden (change)="onGpxFile($event)" [disabled]="routeBusy()" />
           </label>
-          <button mat-flat-button color="warn" class="kill" (click)="killSwitch()" [disabled]="archived()">
-            <mat-icon>stop_circle</mat-icon> סיום פעילות וסגירת שידורים
+          <button mat-flat-button color="warn" class="kill" (click)="killSwitch()" [disabled]="archived() || killing()">
+            @if (killing()) { <mat-spinner diameter="20"></mat-spinner> } @else { <mat-icon>stop_circle</mat-icon> }
+            {{ killing() ? 'מסיים…' : 'סיום פעילות וסגירת שידורים' }}
           </button>
         </div>
       </div>
@@ -60,7 +64,7 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
         <div class="map-wrap">
           <div #mapEl class="map"></div>
           @if (!mapReady()) {
-            <div class="map-loading">טוען מפה…</div>
+            <div class="map-loading"><mat-spinner diameter="36"></mat-spinner> טוען מפה…</div>
           }
         </div>
 
@@ -77,8 +81,12 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
               <p class="desc">{{ inc.desc }}</p>
               <p class="meta">{{ inc.category }} · {{ inc.status }}</p>
               <div class="row">
-                <button mat-button color="primary" (click)="setStatus(inc, 'IN_PROGRESS'); $event.stopPropagation()">העבר לטיפול</button>
-                <button mat-button color="warn" (click)="setStatus(inc, 'RESOLVED'); $event.stopPropagation()">סמן כטופל וסגור</button>
+                @if (statusBusyId() === inc.incidentId) {
+                  <mat-spinner diameter="20"></mat-spinner>
+                } @else {
+                  <button mat-button color="primary" (click)="setStatus(inc, 'IN_PROGRESS'); $event.stopPropagation()">העבר לטיפול</button>
+                  <button mat-button color="warn" (click)="setStatus(inc, 'RESOLVED'); $event.stopPropagation()">סמן כטופל וסגור</button>
+                }
               </div>
             </mat-card>
           } @empty {
@@ -122,7 +130,8 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
     .main { flex: 1; display: grid; grid-template-columns: 1fr 320px 280px; gap: 0; min-height: 0; }
     .map-wrap { position: relative; min-height: 400px; }
     .map { position: absolute; inset: 0; }
-    .map-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #f1f5f9; }
+    .map-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; background: #f1f5f9; color: #64748b; }
+    .gpx-drop.busy { opacity: 0.7; pointer-events: none; }
     .side { background: #fff; border-inline-start: 1px solid #e2e8f0; overflow-y: auto; padding: 12px; }
     .side h3 { margin: 0 0 8px; font-size: 15px; }
     .inc { margin-bottom: 10px; padding: 10px; cursor: pointer; }
@@ -159,6 +168,9 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
   incidents = signal<FieldIncident[]>([]);
   mapReady = signal(false);
   archived = signal(false);
+  routeBusy = signal(false);
+  killing = signal(false);
+  statusBusyId = signal<string | null>(null);
 
   private eventId = '';
   private subs: Subscription[] = [];
@@ -395,11 +407,14 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
   }
 
   async setStatus(inc: FieldIncident, status: 'IN_PROGRESS' | 'RESOLVED'): Promise<void> {
+    this.statusBusyId.set(inc.incidentId);
     try {
       await this.live.setIncidentStatus(this.eventId, inc.incidentId, status);
       this.snack.open(status === 'RESOLVED' ? 'האירוע נסגר והוסר מהמפה.' : 'הועבר לטיפול.', 'אישור', { duration: 2000 });
     } catch (e: unknown) {
       this.snack.open('עדכון נכשל.', 'סגור', { duration: 3000 });
+    } finally {
+      this.statusBusyId.set(null);
     }
   }
 
@@ -419,7 +434,8 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
 
   private async uploadRouteFile(f: File): Promise<void> {
     const e = this.event();
-    if (!e) return;
+    if (!e || this.routeBusy()) return;
+    this.routeBusy.set(true);
     try {
       const path = await this.events.uploadGpx(e.orgId, f);
       await this.events.updateEvent(e.eventId, { route: { gpxPath: path } });
@@ -429,6 +445,8 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
       this.snack.open('המסלול עודכן.', 'אישור', { duration: 2500 });
     } catch {
       this.snack.open('העלאת GPX נכשלה.', 'סגור', { duration: 3500 });
+    } finally {
+      this.routeBusy.set(false);
     }
   }
 
@@ -451,12 +469,15 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
       });
       second.afterClosed().subscribe(async (ok2: boolean) => {
         if (!ok2) return;
+        this.killing.set(true);
         try {
           await this.events.terminateEvent(this.eventId);
           this.archived.set(true);
           this.snack.open('הפעילות הסתיימה — השידורים הופסקו.', 'אישור', { duration: 4000 });
         } catch (e: unknown) {
           this.snack.open('סיום נכשל: ' + (e instanceof Error ? e.message : ''), 'סגור', { duration: 3500 });
+        } finally {
+          this.killing.set(false);
         }
       });
     });

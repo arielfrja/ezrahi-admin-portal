@@ -6,6 +6,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { EventService } from '../../services/event.service';
@@ -28,6 +29,7 @@ import { MatDialog } from '@angular/material/dialog';
     MatIconModule,
     MatChipsModule,
     MatSnackBarModule,
+    MatProgressSpinnerModule,
     MatFormFieldModule,
     MatSelectModule,
   ],
@@ -60,6 +62,9 @@ import { MatDialog } from '@angular/material/dialog';
       }
 
       <div class="mat-elevation-z2 table-wrap">
+        @if (loading()) {
+          <div class="loading-block"><mat-spinner diameter="32"></mat-spinner> טוען אירועים…</div>
+        } @else {
         <table mat-table [dataSource]="events()">
           <ng-container matColumnDef="name">
             <th mat-header-cell *matHeaderCellDef>שם האירוע</th>
@@ -86,15 +91,20 @@ import { MatDialog } from '@angular/material/dialog';
                 </button>
               }
               @if (e.status !== 'COMPLETED') {
-                <button mat-icon-button color="warn" (click)="terminate(e)" title="סיום אירוע לכולם">
-                  <mat-icon>stop_circle</mat-icon>
-                </button>
+                @if (terminatingId() === e.eventId) {
+                  <mat-spinner diameter="20"></mat-spinner>
+                } @else {
+                  <button mat-icon-button color="warn" (click)="terminate(e)" title="סיום אירוע לכולם">
+                    <mat-icon>stop_circle</mat-icon>
+                  </button>
+                }
               }
             </td>
           </ng-container>
           <tr mat-header-row *matHeaderRowDef="cols"></tr>
           <tr mat-row *matRowDef="let row; columns: cols;"></tr>
         </table>
+        }
       </div>
     </div>
   `,
@@ -112,6 +122,7 @@ import { MatDialog } from '@angular/material/dialog';
     .badge.ACTIVE { background: #dcfce7; color: #15803d; }
     .badge.COMPLETED { background: #f1f5f9; color: #475569; }
     .badge.CANCELLED { background: #fee2e2; color: #b91c1c; }
+    .loading-block { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px; color: #64748b; }
   `],
 })
 export class ActivityListComponent implements OnInit {
@@ -127,6 +138,8 @@ export class ActivityListComponent implements OnInit {
   orgs = signal<Organization[]>([]);
   orgId = signal<string>(this.auth.currentOrgId() ?? '');
   quotaText = signal<string>('');
+  loading = signal(true);
+  terminatingId = signal<string | null>(null);
 
   isSuper(): boolean {
     return this.auth.isSuperAdmin();
@@ -153,13 +166,18 @@ export class ActivityListComponent implements OnInit {
   load(): void {
     const id = this.orgId();
     if (!id) return;
+    this.loading.set(true);
     this.eventSvc.watchOrgEvents(id).subscribe({
       next: (list) => {
         this.events.set(list);
         const active = list.filter((e) => e.status === 'ACTIVE').length;
         this.quotaText.set(`אירועים פעילים: ${active}`);
+        this.loading.set(false);
       },
-      error: (e: Error) => this.snack.open('שגיאה בטעינת אירועים: ' + e.message, 'סגור', { duration: 3500 }),
+      error: (e: Error) => {
+        this.snack.open('שגיאה בטעינת אירועים: ' + e.message, 'סגור', { duration: 3500 });
+        this.loading.set(false);
+      },
     });
   }
 
@@ -183,11 +201,14 @@ export class ActivityListComponent implements OnInit {
     });
     ref.afterClosed().subscribe(async (ok: boolean) => {
       if (!ok) return;
+      this.terminatingId.set(e.eventId);
       try {
         await this.eventSvc.terminateEvent(e.eventId);
         this.snack.open('האירוע הסתיים.', 'אישור', { duration: 2500 });
       } catch (err: unknown) {
         this.snack.open('סיום נכשל: ' + (err instanceof Error ? err.message : ''), 'סגור', { duration: 3500 });
+      } finally {
+        this.terminatingId.set(null);
       }
     });
   }
