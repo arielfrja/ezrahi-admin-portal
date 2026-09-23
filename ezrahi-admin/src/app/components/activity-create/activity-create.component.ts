@@ -217,8 +217,6 @@ function endAfterStart(group: AbstractControl): ValidationErrors | null {
               <mat-error>תאריך סיום חובה</mat-error>
             } @else if (form.get('endDate')?.hasError('matDatepickerParse')) {
               <mat-error>תאריך לא תקין</mat-error>
-            } @else if (form.hasError('order')) {
-              <mat-error>הסיום חייב להיות אחרי ההתחלה</mat-error>
             }
           </mat-form-field>
           <mat-form-field appearance="outline">
@@ -228,11 +226,12 @@ function endAfterStart(group: AbstractControl): ValidationErrors | null {
             <mat-timepicker #endTimePicker></mat-timepicker>
             @if (form.get('endClock')?.invalid) {
               <mat-error>שעה לא תקינה (למשל 18:30)</mat-error>
-            } @else if (form.hasError('order')) {
-              <mat-error>הסיום חייב להיות אחרי ההתחלה</mat-error>
             }
             <mat-hint>אופציונלי — ברירת מחדל 23:59</mat-hint>
           </mat-form-field>
+          @if (form.hasError('order')) {
+            <p class="full err">הסיום חייב להיות אחרי ההתחלה</p>
+          }
           <mat-form-field appearance="outline" class="full">
             <mat-label>מנהל אירוע (מהמאגר הקבוע)</mat-label>
             <mat-select formControlName="managerId">
