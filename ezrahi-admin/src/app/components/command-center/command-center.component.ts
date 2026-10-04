@@ -21,6 +21,27 @@ import { Subscription } from 'rxjs';
 
 const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r) => [r.id, r.color]));
 
+/** Android app parity — staff marker fill by liveness (MapLibreConfig). */
+const LIVENESS_COLORS = {
+  ACTIVE: '#2E7D32',
+  STALE: '#F9A825',
+  DISCONNECTED: '#616161',
+  EXPIRED: '#9E9E9E',
+} as const;
+/** Staleness thresholds in minutes (app StalenessConfig defaults). */
+const STALE_MIN = 5;
+const DISCONNECTED_MIN = 15;
+const EXPIRED_MIN = 30;
+
+/** Android app parity — incident marker per category (ReportIconCatalog). */
+const INCIDENT_STYLE: Record<string, { color: string; icon: string }> = {
+  MEDICAL: { color: '#C62828', icon: 'local_hospital' },
+  SECURITY: { color: '#1565C0', icon: 'shield' },
+  DELAY: { color: '#F9A825', icon: 'schedule' },
+  HAZARD: { color: '#E64A19', icon: 'warning' },
+};
+const INCIDENT_STYLE_DEFAULT = { color: '#2E7D32', icon: 'info' };
+
 /**
  * Tasks 6.1–6.3 — Live Command Center (wide-screen HQ).
  * Full map + GPX + staff markers + urgency-sorted incident board + kill-switch.
@@ -376,6 +397,30 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
   }
 
+  /** Android app parity — liveness from last-seen age (EntityLivenessState). */
+  private livenessOf(p: LiveParticipant): keyof typeof LIVENESS_COLORS {
+    const loc = this.locations().find((l) => l.uid === p.uid);
+    const raw = p.lastSeen ?? loc?.updatedAt;
+    const t =
+      typeof raw === 'object' && raw !== null && 'toDate' in raw && typeof (raw as { toDate: unknown }).toDate === 'function'
+        ? (raw as { toDate: () => Date }).toDate().getTime()
+        : new Date(raw as unknown as string).getTime();
+    if (!Number.isFinite(t)) return 'ACTIVE';
+    const ageMin = (Date.now() - t) / 60000;
+    if (ageMin < STALE_MIN) return 'ACTIVE';
+    if (ageMin < DISCONNECTED_MIN) return 'STALE';
+    if (ageMin < EXPIRED_MIN) return 'DISCONNECTED';
+    return 'EXPIRED';
+  }
+
+  livenessColor(p: LiveParticipant): string {
+    return LIVENESS_COLORS[this.livenessOf(p)];
+  }
+
+  incidentStyle(category: string): { color: string; icon: string } {
+    return INCIDENT_STYLE[category] ?? INCIDENT_STYLE_DEFAULT;
+  }
+
   batteryText(p: LiveParticipant): string {
     return p.battery != null ? ` · סוללה ${p.battery}%` : '';
   }
@@ -401,6 +446,15 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
       }
     }
     for (const p of this.participants()) {
+      // Android parity: EXPIRED markers leave the map (roster still lists them).
+      if (this.livenessOf(p) === 'EXPIRED') {
+        const stale = this.staffMarkers.get(p.uid);
+        if (stale) {
+          stale.remove();
+          this.staffMarkers.delete(p.uid);
+        }
+        continue;
+      }
       const pos = this.personPos(p.uid);
       if (!pos) continue;
       let marker = this.staffMarkers.get(p.uid);
@@ -411,7 +465,7 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
         el.style.borderRadius = '50%';
         el.style.border = '2px solid #fff';
         el.style.boxShadow = '0 1px 4px rgba(0,0,0,.4)';
-        el.style.background = this.colorFor(p.role);
+        el.style.background = this.livenessColor(p);
         el.style.cursor = 'pointer';
         marker = new maplibregl.Marker({ element: el });
         const loc = this.locations().find((l) => l.uid === p.uid);
@@ -424,6 +478,7 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
         marker.setLngLat(pos).addTo(this.map);
         this.staffMarkers.set(p.uid, marker);
       } else {
+        marker.getElement().style.background = this.livenessColor(p);
         marker.setLngLat(pos); // smooth in-place update, no flicker
       }
     }
@@ -440,12 +495,26 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     }
     for (const inc of this.incidents()) {
       if (!Number.isFinite(inc.lat) || !Number.isFinite(inc.lng)) continue;
+      const style = this.incidentStyle(inc.category);
       let marker = this.incidentMarkers.get(inc.incidentId);
       if (!marker) {
         const el = document.createElement('div');
-        el.textContent = inc.severity === 'HIGH' ? '🚨' : '⚠️';
-        el.style.fontSize = '22px';
+        el.style.width = '24px';
+        el.style.height = '24px';
+        el.style.borderRadius = '50%';
+        el.style.background = style.color;
+        el.style.border = '2px solid #fff';
+        el.style.boxShadow = '0 1px 4px rgba(0,0,0,.4)';
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
         el.style.cursor = 'pointer';
+        const glyph = document.createElement('span');
+        glyph.className = 'material-icons';
+        glyph.textContent = style.icon;
+        glyph.style.fontSize = '14px';
+        glyph.style.color = '#fff';
+        el.appendChild(glyph);
         marker = new maplibregl.Marker({ element: el });
         marker.setPopup(
           new maplibregl.Popup({ offset: 12 }).setText(`${inc.title || inc.category}: ${inc.desc}`),
