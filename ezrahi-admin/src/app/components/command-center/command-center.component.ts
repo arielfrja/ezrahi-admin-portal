@@ -86,6 +86,9 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
                 } @else {
                   <button mat-button color="primary" (click)="setStatus(inc, 'IN_PROGRESS'); $event.stopPropagation()">העבר לטיפול</button>
                   <button mat-button color="warn" (click)="setStatus(inc, 'RESOLVED'); $event.stopPropagation()">סמן כטופל וסגור</button>
+                  <button mat-icon-button color="warn" (click)="deleteIncident(inc); $event.stopPropagation()" title="מחק דיווח לצמיתות">
+                    <mat-icon>delete</mat-icon>
+                  </button>
                 }
               </div>
             </mat-card>
@@ -97,16 +100,24 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
         <aside class="side roster">
           <h3>מצבת כוחות ({{ participants().length }})</h3>
           @for (p of participants(); track p.uid) {
-            <div class="person" (click)="flyToPerson(p)">
+            <div class="person" [class.removed]="p.status === 'REMOVED'" (click)="flyToPerson(p)">
               <span class="dot" [style.background]="colorFor(p.role)"></span>
               <div class="who">
                 <strong>{{ p.name }}</strong>
-                <small>{{ roleTitle(p.role) }} · {{ lastSeen(p) }}</small>
+                <small>{{ roleTitle(p.role) }} · {{ lastSeen(p) }}{{ batteryText(p) }}{{ presenceText(p) }}</small>
               </div>
               @if (p.phone) {
                 <a mat-icon-button [href]="'tel:' + p.phone" matTooltip="חייג" (click)="$event.stopPropagation()">
                   <mat-icon>call</mat-icon>
                 </a>
+                <a mat-icon-button [href]="waLink(p.phone)" target="_blank" rel="noopener" matTooltip="שלח הודעה" (click)="$event.stopPropagation()">
+                  <mat-icon>chat</mat-icon>
+                </a>
+              }
+              @if (p.status !== 'REMOVED') {
+                <button mat-icon-button color="warn" (click)="removeParticipant(p); $event.stopPropagation()" title="הסר מהאירוע">
+                  <mat-icon>person_remove</mat-icon>
+                </button>
               }
             </div>
           } @empty {
@@ -145,6 +156,7 @@ const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r
     .row { display: flex; gap: 4px; }
     .empty { color: #94a3b8; font-size: 13px; }
     .person { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+    .person.removed { opacity: 0.55; }
     .person .dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
     .who { flex: 1; display: flex; flex-direction: column; }
     .who small { color: #64748b; }
@@ -178,6 +190,35 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
   private map: maplibregl.Map | null = null;
   private staffMarkers = new Map<string, maplibregl.Marker>();
   private incidentMarkers = new Map<string, maplibregl.Marker>();
+  /** Callbacks waiting for the style to become ready (flushed on next idle). */
+  private styleReadyQueue: Array<() => void> = [];
+  private styleReadyHooked = false;
+
+  /** Run cb now if the style is ready, else once rendering settles.
+   *  isStyleLoaded() is unreliable right inside the map 'load' handler
+   *  (style churn from label overrides), so the route layer goes through here. */
+  private afterStyleReady(cb: () => void): void {
+    const map = this.map;
+    if (!map) return;
+    if (map.isStyleLoaded()) {
+      cb();
+      return;
+    }
+    if (this.styleReadyQueue.length < 8) this.styleReadyQueue.push(cb);
+    if (this.styleReadyHooked) return;
+    this.styleReadyHooked = true;
+    map.once('idle', () => {
+      this.styleReadyHooked = false;
+      const q = this.styleReadyQueue.splice(0);
+      for (const fn of q) {
+        try {
+          fn();
+        } catch {
+          // map torn down mid-wait — drop
+        }
+      }
+    });
+  }
 
   ngOnInit(): void {
     this.eventId = this.route.snapshot.paramMap.get('eventId') ?? '';
@@ -250,7 +291,13 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
   }
 
   private async ensureRouteLayer(e: FieldEvent): Promise<void> {
-    if (!this.map || !this.map.isStyleLoaded()) return;
+    if (!this.map) return;
+    if (!this.map.isStyleLoaded()) {
+      // isStyleLoaded() is unreliable right inside the map 'load' handler
+      // (style churn from label overrides) — defer until rendering settles.
+      this.afterStyleReady(() => void this.ensureRouteLayer(e));
+      return;
+    }
     const gpxPath = e.route?.gpxPath;
     if (this.map.getSource('route')) return; // already drawn
     const drawn: { line: boolean; bounds: maplibregl.LngLatBounds | null } = { line: false, bounds: null };
@@ -327,6 +374,20 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
       ? (v as { toDate: () => Date }).toDate()
       : new Date(v as unknown as string);
     return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  batteryText(p: LiveParticipant): string {
+    return p.battery != null ? ` · סוללה ${p.battery}%` : '';
+  }
+
+  presenceText(p: LiveParticipant): string {
+    if (p.status === 'REMOVED') return ' · הוסר מהאירוע';
+    if (p.status === 'OFFLINE') return ' · לא משדר';
+    return '';
+  }
+
+  waLink(phone: string): string {
+    return `https://wa.me/${phone.replace(/[^\d]/g, '')}`;
   }
 
   private syncStaffMarkers(): void {
@@ -416,6 +477,45 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     } finally {
       this.statusBusyId.set(null);
     }
+  }
+
+  async deleteIncident(inc: FieldIncident): Promise<void> {
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'מחיקת דיווח',
+        message: `למחוק את "${inc.title || inc.category}" לצמיתות? לא ניתן לבטל פעולה זו.`,
+      },
+    });
+    ref.afterClosed().subscribe(async (ok: boolean) => {
+      if (!ok) return;
+      this.statusBusyId.set(inc.incidentId);
+      try {
+        await this.live.deleteIncident(this.eventId, inc.incidentId);
+        this.snack.open('הדיווח נמחק.', 'אישור', { duration: 2500 });
+      } catch {
+        this.snack.open('מחיקה נכשלה.', 'סגור', { duration: 3000 });
+      } finally {
+        this.statusBusyId.set(null);
+      }
+    });
+  }
+
+  async removeParticipant(p: LiveParticipant): Promise<void> {
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'הסרת משתתף',
+        message: `להסיר את ${p.name} מהאירוע? הסמן שלו יסומן כמוסר.`,
+      },
+    });
+    ref.afterClosed().subscribe(async (ok: boolean) => {
+      if (!ok) return;
+      try {
+        await this.live.setParticipantStatus(this.eventId, p.uid, 'REMOVED');
+        this.snack.open('המשתתף הוסר מהאירוע.', 'אישור', { duration: 2500 });
+      } catch {
+        this.snack.open('הסרה נכשלה.', 'סגור', { duration: 3000 });
+      }
+    });
   }
 
   // ---- GPX drag & drop (Task 6.1: update route from HQ laptop) ----

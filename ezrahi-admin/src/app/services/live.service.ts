@@ -5,6 +5,7 @@ import {
   doc,
   onSnapshot,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
   query,
   orderBy,
@@ -146,6 +147,18 @@ export class LiveService {
 
   async setIncidentStatus(eventId: string, incidentId: string, status: IncidentStatus): Promise<void> {
     const ref = doc(this.fb.firestore, 'events', eventId, 'incidents', incidentId);
+    await updateDoc(ref, { status, updatedAt: serverTimestamp() });
+  }
+
+  /** Hard-delete a report (rules: manager / org-admin / super-admin). */
+  async deleteIncident(eventId: string, incidentId: string): Promise<void> {
+    const ref = doc(this.fb.firestore, 'events', eventId, 'incidents', incidentId);
+    await deleteDoc(ref);
+  }
+
+  /** Set participant presence (e.g. REMOVED by HQ; rules allow manager/org-admin/super-admin). */
+  async setParticipantStatus(eventId: string, uid: string, status: string): Promise<void> {
+    const ref = doc(this.fb.firestore, 'events', eventId, 'participants', uid);
     await updateDoc(ref, { status, updatedAt: serverTimestamp() });
   }
 }
