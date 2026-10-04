@@ -125,7 +125,7 @@ const INCIDENT_STYLE_DEFAULT = { color: '#2E7D32', icon: 'info' };
               <span class="dot" [style.background]="colorFor(p.role)"></span>
               <div class="who">
                 <strong>{{ p.name }}</strong>
-                <small>{{ roleTitle(p.role) }} · {{ lastSeen(p) }}{{ batteryText(p) }}{{ presenceText(p) }}</small>
+                <small>{{ roleTitle(p.role) }} · {{ lastSeen(p) }}{{ presenceText(p) }}</small>
               </div>
               @if (p.phone) {
                 <a mat-icon-button [href]="'tel:' + p.phone" matTooltip="חייג" (click)="$event.stopPropagation()">
@@ -419,10 +419,6 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
 
   incidentStyle(category: string): { color: string; icon: string } {
     return INCIDENT_STYLE[category] ?? INCIDENT_STYLE_DEFAULT;
-  }
-
-  batteryText(p: LiveParticipant): string {
-    return p.battery != null ? ` · סוללה ${p.battery}%` : '';
   }
 
   presenceText(p: LiveParticipant): string {
