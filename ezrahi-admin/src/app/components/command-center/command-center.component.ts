@@ -16,6 +16,8 @@ import { LiveService, LiveParticipant, LiveLocation, FieldIncident } from '../..
 import { FieldEvent } from '../../models/event.model';
 import { BASE_ROLES } from '../../models/event.model';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
+import { ReportDialogComponent, ReportDialogResult } from '../report-dialog/report-dialog.component';
+import { AuthService } from '../../services/auth.service';
 import { applyHebrewLabels } from '../../utils/hebrew-labels';
 import { Subscription } from 'rxjs';
 
@@ -82,7 +84,7 @@ const INCIDENT_STYLE_DEFAULT = { color: '#2E7D32', icon: 'info' };
       </div>
 
       <div class="main">
-        <div class="map-wrap">
+        <div class="map-wrap" matTooltip="לחיצה ארוכה או קליק ימני על המפה = דיווח חדש">
           <div #mapEl class="map"></div>
           @if (!mapReady()) {
             <div class="map-loading"><app-loader size="lg"></app-loader> טוען מפה…</div>
@@ -190,6 +192,7 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
 
   private route = inject(ActivatedRoute);
   private fb = inject(FirebaseService);
+  private auth = inject(AuthService);
   private events = inject(EventService);
   private live = inject(LiveService);
   private snack = inject(MatSnackBar);
@@ -291,6 +294,34 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
       zoom: 10,
     });
     this.map.addControl(new maplibregl.NavigationControl(), 'top-left');
+    // Crew parity: long-press (or right-click) on the map opens a report dialog.
+    this.map.on('contextmenu', (e) => {
+      e.preventDefault();
+      this.openReportAt(e.lngLat.lng, e.lngLat.lat);
+    });
+    let pressTimer: ReturnType<typeof setTimeout> | null = null;
+    let pressPos: { x: number; y: number } | null = null;
+    this.map.on('mousedown', (e) => {
+      if (e.originalEvent.button !== 0) return; // left button only (right-click uses contextmenu)
+      pressPos = { x: e.point.x, y: e.point.y };
+      pressTimer = setTimeout(() => {
+        this.openReportAt(e.lngLat.lng, e.lngLat.lat);
+        pressTimer = null;
+      }, 600);
+    });
+    const cancelPress = (e: { point: { x: number; y: number } }): void => {
+      if (pressTimer && pressPos && Math.hypot(e.point.x - pressPos.x, e.point.y - pressPos.y) > 10) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+    this.map.on('mousemove', cancelPress);
+    this.map.on('mouseup', () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    });
     this.map.on('load', () => {
       this.mapReady.set(true);
       applyHebrewLabels(this.map!);
@@ -532,8 +563,29 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     if (pos) this.map?.flyTo({ center: pos, zoom: 14 });
   }
 
-  async setStatus(inc: FieldIncident, status: 'IN_PROGRESS' | 'RESOLVED'): Promise<void> {
-    this.statusBusyId.set(inc.incidentId);
+  /** Crew parity: file a report at a map point (long-press / right-click). */
+  openReportAt(lng: number, lat: number): void {
+    const uid = this.auth.currentUser()?.uid;
+    if (!uid) {
+      this.snack.open('אין משתמש מחובר.', 'סגור', { duration: 3000 });
+      return;
+    }
+    const ref = this.dialog.open(ReportDialogComponent, {
+      width: '420px',
+      data: { lat, lng },
+    });
+    ref.afterClosed().subscribe(async (result: ReportDialogResult | null) => {
+      if (!result) return;
+      try {
+        await this.live.createIncident(this.eventId, { ...result, lat, lng, reporterId: uid });
+        this.snack.open('הדיווח נשלח.', 'אישור', { duration: 2500 });
+      } catch {
+        this.snack.open('שליחת הדיווח נכשלה.', 'סגור', { duration: 3500 });
+      }
+    });
+  }
+
+  async setStatus(inc: FieldIncident, status: 'IN_PROGRESS' | 'RESOLVED'): Promise<void> {    this.statusBusyId.set(inc.incidentId);
     try {
       await this.live.setIncidentStatus(this.eventId, inc.incidentId, status);
       this.snack.open(status === 'RESOLVED' ? 'האירוע נסגר והוסר מהמפה.' : 'הועבר לטיפול.', 'אישור', { duration: 2000 });

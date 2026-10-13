@@ -3,6 +3,7 @@ import { FirebaseService } from './firebase.service';
 import {
   collection,
   doc,
+  addDoc,
   onSnapshot,
   updateDoc,
   deleteDoc,
@@ -148,6 +149,31 @@ export class LiveService {
   async setIncidentStatus(eventId: string, incidentId: string, status: IncidentStatus): Promise<void> {
     const ref = doc(this.fb.firestore, 'events', eventId, 'incidents', incidentId);
     await updateDoc(ref, { status, updatedAt: serverTimestamp() });
+  }
+
+  /** HQ report creation (crew parity). Severity auto: HIGH iff MEDICAL/SECURITY. */
+  async createIncident(eventId: string, req: {
+    category: string;
+    title: string;
+    desc: string;
+    lat: number;
+    lng: number;
+    reporterId: string;
+  }): Promise<string> {
+    const ref = collection(this.fb.firestore, 'events', eventId, 'incidents');
+    const docRef = await addDoc(ref, {
+      category: req.category,
+      severity: req.category === 'MEDICAL' || req.category === 'SECURITY' ? 'HIGH' : 'NORMAL',
+      title: req.title,
+      desc: req.desc,
+      lat: req.lat,
+      lng: req.lng,
+      reporterId: req.reporterId,
+      status: 'REPORTED',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return docRef.id;
   }
 
   /** Hard-delete a report (rules: manager / org-admin / super-admin). */
