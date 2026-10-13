@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, inject, ElementRef, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, signal, inject, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,8 +16,15 @@ import { LiveService, LiveParticipant, LiveLocation, FieldIncident } from '../..
 import { FieldEvent } from '../../models/event.model';
 import { BASE_ROLES } from '../../models/event.model';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
-import { ReportDialogComponent, ReportDialogResult } from '../report-dialog/report-dialog.component';
 import { AuthService } from '../../services/auth.service';
+
+/** Report categories (Hebrew labels) for the HQ quick-report form. */
+const INCIDENT_CATEGORIES = [
+  { id: 'MEDICAL', title: 'רפואי' },
+  { id: 'SECURITY', title: 'ביטחוני' },
+  { id: 'DELAY', title: 'עיכוב' },
+  { id: 'HAZARD', title: 'מפגע' },
+];
 import { applyHebrewLabels } from '../../utils/hebrew-labels';
 import { Subscription } from 'rxjs';
 
@@ -71,6 +78,10 @@ const INCIDENT_STYLE_DEFAULT = { color: '#2E7D32', icon: 'info' };
           }
         </div>
         <div class="ops">
+          <button mat-stroked-button [color]="reportArmed() ? 'warn' : 'primary'" (click)="toggleReportArm()" [matTooltip]="reportArmed() ? 'לחץ שוב לביטול (Esc)' : 'הצב דיווח חדש על המפה'">
+            <mat-icon>place</mat-icon>
+            {{ reportArmed() ? 'מבטל הצבה…' : 'דיווח חדש' }}
+          </button>
           <label class="gpx-drop" [class.busy]="routeBusy()" (dragover)="$event.preventDefault()" (drop)="onGpxDrop($event)" matTooltip="גרור קובץ GPX לעדכון המסלול">
             @if (routeBusy()) { <app-loader size="sm"></app-loader> } @else { <mat-icon>upload</mat-icon> }
             {{ routeBusy() ? 'מעלה מסלול…' : 'עדכן מסלול (GPX)' }}
@@ -207,6 +218,8 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
   routeBusy = signal(false);
   killing = signal(false);
   statusBusyId = signal<string | null>(null);
+  /** Placement mode for a new report (desktop): armed → next map click drops the marker. */
+  reportArmed = signal(false);
 
   private eventId = '';
   private subs: Subscription[] = [];
@@ -321,6 +334,12 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
         clearTimeout(pressTimer);
         pressTimer = null;
       }
+    });
+    // Placement mode: armed → next plain click drops the pending report marker.
+    this.map.on('click', (e) => {
+      if (!this.reportArmed()) return;
+      this.disarmReport();
+      this.openReportAt(e.lngLat.lng, e.lngLat.lat);
     });
     this.map.on('load', () => {
       this.mapReady.set(true);
@@ -563,26 +582,120 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     if (pos) this.map?.flyTo({ center: pos, zoom: 14 });
   }
 
-  /** Crew parity: file a report at a map point (long-press / right-click). */
-  openReportAt(lng: number, lat: number): void {
-    const uid = this.auth.currentUser()?.uid;
-    if (!uid) {
-      this.snack.open('אין משתמש מחובר.', 'סגור', { duration: 3000 });
+  /** Crew parity: file a report at a map point — temp marker + form in its popup. */
+  private pendingMarker: maplibregl.Marker | null = null;
+
+  toggleReportArm(): void {
+    if (this.reportArmed()) {
+      this.disarmReport();
       return;
     }
-    const ref = this.dialog.open(ReportDialogComponent, {
-      width: '420px',
-      data: { lat, lng },
+    this.reportArmed.set(true);
+    const canvas = this.map?.getCanvas();
+    if (canvas) canvas.style.cursor = 'crosshair';
+    this.snack.open('לחצו על המפה למיקום הדיווח (Esc לביטול).', 'סגור', { duration: 4000 });
+  }
+
+  disarmReport(): void {
+    this.reportArmed.set(false);
+    const canvas = this.map?.getCanvas();
+    if (canvas) canvas.style.cursor = '';
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.reportArmed()) this.disarmReport();
+  }
+
+  openReportAt(lng: number, lat: number): void {
+    const uid = this.auth.currentUser()?.uid;
+    if (!uid || !this.map) {
+      if (!uid) this.snack.open('אין משתמש מחובר.', 'סגור', { duration: 3000 });
+      return;
+    }
+    this.clearPendingMarker();
+
+    const el = document.createElement('div');
+    el.style.width = '24px';
+    el.style.height = '24px';
+    el.style.borderRadius = '50%';
+    el.style.background = '#94a3b8';
+    el.style.border = '2px dashed #fff';
+    el.style.boxShadow = '0 1px 4px rgba(0,0,0,.4)';
+
+    const form = document.createElement('div');
+    form.dir = 'rtl';
+    form.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:220px;font-family:inherit;';
+    const title = document.createElement('strong');
+    title.textContent = 'דיווח חדש';
+    const cat = document.createElement('select');
+    cat.style.cssText = 'padding:6px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;';
+    for (const c of INCIDENT_CATEGORIES) {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.title;
+      cat.appendChild(opt);
+    }
+    const nameInput = document.createElement('input');
+    nameInput.placeholder = 'כותרת (חובה)';
+    nameInput.style.cssText = 'padding:6px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;';
+    const descInput = document.createElement('textarea');
+    descInput.placeholder = 'תיאור (אופציונלי)';
+    descInput.rows = 2;
+    descInput.style.cssText = 'padding:6px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;resize:vertical;';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'ביטול';
+    cancelBtn.style.cssText = 'padding:6px 12px;border:none;background:none;color:#005cbb;cursor:pointer;font:inherit;';
+    const sendBtn = document.createElement('button');
+    sendBtn.type = 'button';
+    sendBtn.textContent = 'שלח דיווח';
+    sendBtn.style.cssText = 'padding:6px 14px;border:none;border-radius:6px;background:#005cbb;color:#fff;cursor:pointer;font:inherit;';
+    row.append(cancelBtn, sendBtn);
+    form.append(title, cat, nameInput, descInput, row);
+
+    const popup = new maplibregl.Popup({ offset: 14, closeOnClick: false }).setDOMContent(form);
+    const marker = new maplibregl.Marker({ element: el });
+    marker.setPopup(popup);
+    marker.setLngLat([lng, lat]).addTo(this.map);
+    marker.togglePopup();
+    this.pendingMarker = marker;
+    popup.on('close', () => {
+      if (this.pendingMarker === marker) this.pendingMarker = null;
+      marker.remove();
     });
-    ref.afterClosed().subscribe(async (result: ReportDialogResult | null) => {
-      if (!result) return;
-      try {
-        await this.live.createIncident(this.eventId, { ...result, lat, lng, reporterId: uid });
-        this.snack.open('הדיווח נשלח.', 'אישור', { duration: 2500 });
-      } catch {
-        this.snack.open('שליחת הדיווח נכשלה.', 'סגור', { duration: 3500 });
+    cancelBtn.addEventListener('click', () => popup.remove());
+    sendBtn.addEventListener('click', () => {
+      const category = cat.value;
+      const reportTitle = nameInput.value.trim();
+      if (!category || !reportTitle) {
+        nameInput.focus();
+        nameInput.style.borderColor = '#b91c1c';
+        return;
       }
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'שולח…';
+      void this.live.createIncident(this.eventId, {
+        category, title: reportTitle, desc: descInput.value.trim(), lat, lng, reporterId: uid,
+      }).then(
+        () => {
+          this.snack.open('הדיווח נשלח.', 'אישור', { duration: 2500 });
+          popup.remove();
+        },
+        () => {
+          this.snack.open('שליחת הדיווח נכשלה.', 'סגור', { duration: 3500 });
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'שלח דיווח';
+        },
+      );
     });
+  }
+
+  private clearPendingMarker(): void {
+    this.pendingMarker?.remove();
+    this.pendingMarker = null;
   }
 
   async setStatus(inc: FieldIncident, status: 'IN_PROGRESS' | 'RESOLVED'): Promise<void> {    this.statusBusyId.set(inc.incidentId);
