@@ -7,6 +7,7 @@ import { StaffListComponent } from './components/staff-list/staff-list.component
 import { ActivityListComponent } from './components/activity-list/activity-list.component';
 import { ActivityCreateComponent } from './components/activity-create/activity-create.component';
 import { InvitesGeneratorComponent } from './components/invites-generator/invites-generator.component';
+import { CrewManagerComponent } from './components/crew-manager/crew-manager.component';
 import { CommandCenterComponent } from './components/command-center/command-center.component';
 import { superAdminGuard, orgAdminGuard } from './guards/super-admin.guard';
 
@@ -31,6 +32,7 @@ export const routes: Routes = [
       { path: 'activities/create', component: ActivityCreateComponent },
       { path: 'activities/:id/edit', component: ActivityCreateComponent },
       { path: 'activities/:id/invites', component: InvitesGeneratorComponent },
+      { path: 'activities/:id/crew', component: CrewManagerComponent },
       { path: '', redirectTo: 'activities', pathMatch: 'full' },
     ],
   },

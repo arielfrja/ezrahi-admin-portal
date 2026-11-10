@@ -14,7 +14,14 @@ import { FirebaseService } from '../../services/firebase.service';
 import { EventService } from '../../services/event.service';
 import { LiveService, LiveParticipant, LiveLocation, FieldIncident } from '../../services/live.service';
 import { FieldEvent } from '../../models/event.model';
-import { rolesForEvent } from '../../models/event.model';
+import { rolesForEvent, EVENT_STATUS_LABELS, EventStatus } from '../../models/event.model';
+import {
+  categoryLabel,
+  incidentStatusLabel,
+  personName,
+  PILOT_ROLE_COLORS,
+  PILOT_ROLE_LABELS,
+} from '../../utils/labels';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 import { AuthService } from '../../services/auth.service';
 
@@ -70,7 +77,7 @@ const INCIDENT_STYLE_DEFAULT = { color: '#2E7D32', icon: 'info' };
       <div class="topbar">
         <div class="title">
           <h2>{{ event()?.name ?? 'טוען…' }}</h2>
-          <span class="status" [ngClass]="event()?.status">{{ event()?.status }}</span>
+          <span class="status" [ngClass]="event()?.status">{{ eventStatus(event()?.status) }}</span>
           @if (archived()) {
             <span class="status ARCH">ארכיון — השידורים הופסקו</span>
           }
@@ -105,13 +112,13 @@ const INCIDENT_STYLE_DEFAULT = { color: '#2E7D32', icon: 'info' };
           @for (inc of incidents(); track inc.incidentId) {
             <mat-card class="inc" [class.high]="inc.severity === 'HIGH'" (click)="flyTo(inc)">
               <div class="inc-head">
-                <strong>{{ inc.title || inc.category }}</strong>
+                <strong>{{ inc.title || categoryLabel(inc.category) }}</strong>
                 <span class="sev" [class.high]="inc.severity === 'HIGH'">
                   {{ inc.severity === 'HIGH' ? 'דחוף' : 'רגיל' }}
                 </span>
               </div>
               <p class="desc">{{ inc.desc }}</p>
-              <p class="meta">{{ inc.category }} · {{ inc.status }}</p>
+              <p class="meta">{{ categoryLabel(inc.category) }} · {{ incidentStatusLabel(inc.status) }} · דיווח: {{ reporterName(inc.reporterId) }}</p>
               <div class="row">
                 @if (statusBusyId() === inc.incidentId) {
                   <app-loader size="sm"></app-loader>
@@ -135,7 +142,7 @@ const INCIDENT_STYLE_DEFAULT = { color: '#2E7D32', icon: 'info' };
             <div class="person" [class.removed]="p.status === 'REMOVED'" (click)="flyToPerson(p)">
               <span class="dot" [style.background]="colorFor(p.role)"></span>
               <div class="who">
-                <strong>{{ p.name }}</strong>
+                <strong>{{ displayName(p) }}</strong>
                 <small>{{ roleTitle(p.role) }} · {{ lastSeen(p) }}{{ presenceText(p) }}</small>
               </div>
               @if (p.phone) {
@@ -210,6 +217,9 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
   event = signal<FieldEvent | null>(null);
   /** Effective 8 roles for this event (base defaults + event overrides). */
   eventRoles = computed(() => rolesForEvent(this.event()));
+  // Expose label helpers to the template.
+  categoryLabel = categoryLabel;
+  incidentStatusLabel = incidentStatusLabel;
   participants = signal<LiveParticipant[]>([]);
   locations = signal<LiveLocation[]>([]);
   incidents = signal<FieldIncident[]>([]);
@@ -431,11 +441,32 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
   }
 
   colorFor(role: string): string {
-    return this.eventRoles().find((r) => r.id === role)?.color ?? '#16a34a';
+    return this.eventRoles().find((r) => r.id === role)?.color
+      ?? PILOT_ROLE_COLORS[role]
+      ?? '#16a34a';
   }
 
   roleTitle(role: string): string {
-    return this.eventRoles().find((r) => r.id === role)?.title ?? role;
+    return this.eventRoles().find((r) => r.id === role)?.title
+      ?? PILOT_ROLE_LABELS[role]
+      ?? role;
+  }
+
+  /** Hebrew label for the event status chip (never a raw enum). */
+  eventStatus(status: string | undefined): string {
+    return (status && EVENT_STATUS_LABELS[status as EventStatus]) || '—';
+  }
+
+  /** Never a raw uid: name → phone → generic label. */
+  displayName(p: LiveParticipant): string {
+    return personName(p.name, p.phone);
+  }
+
+  /** Reporter of an incident, shown by name (HQ-filed reports = מפקדה). */
+  reporterName(uid: string): string {
+    if (!uid) return '—';
+    const p = this.participants().find((x) => x.uid === uid);
+    return p ? personName(p.name, p.phone) : 'מפקדה';
   }
 
   lastSeen(p: LiveParticipant): string {
@@ -461,10 +492,6 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     if (ageMin < DISCONNECTED_MIN) return 'STALE';
     if (ageMin < EXPIRED_MIN) return 'DISCONNECTED';
     return 'EXPIRED';
-  }
-
-  livenessColor(p: LiveParticipant): string {
-    return LIVENESS_COLORS[this.livenessOf(p)];
   }
 
   incidentStyle(category: string): { color: string; icon: string } {
@@ -511,23 +538,34 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
         el.style.borderRadius = '50%';
         el.style.border = '2px solid #fff';
         el.style.boxShadow = '0 1px 4px rgba(0,0,0,.4)';
-        el.style.background = this.livenessColor(p);
         el.style.cursor = 'pointer';
+        this.applyPersonFill(el, p);
         marker = new maplibregl.Marker({ element: el });
-        const loc = this.locations().find((l) => l.uid === p.uid);
-        const popup = new maplibregl.Popup({ offset: 12 }).setHTML(
-          `<strong>${p.name}</strong><br/>${this.roleTitle(p.role)}<br/>` +
-            (p.phone ? `<a href="tel:${p.phone}" dir="ltr">${p.phone}</a><br/>` : '') +
-            (loc?.motion ? `תנועה: ${loc.motion}<br/>` : ''),
-        );
-        marker.setPopup(popup);
+        marker.setPopup(this.personPopup(p));
         marker.setLngLat(pos).addTo(this.map);
         this.staffMarkers.set(p.uid, marker);
       } else {
-        marker.getElement().style.background = this.livenessColor(p);
+        this.applyPersonFill(marker.getElement(), p);
+        marker.setPopup(this.personPopup(p)); // refresh name/role in case they changed
         marker.setLngLat(pos); // smooth in-place update, no flicker
       }
     }
+  }
+
+  /** PO decision: staff markers are colored by ROLE; liveness shows as opacity. */
+  private applyPersonFill(el: HTMLElement, p: LiveParticipant): void {
+    el.style.background = this.colorFor(p.role);
+    const lv = this.livenessOf(p);
+    el.style.opacity = lv === 'DISCONNECTED' ? '0.35' : lv === 'STALE' ? '0.6' : '1';
+  }
+
+  private personPopup(p: LiveParticipant): maplibregl.Popup {
+    const loc = this.locations().find((l) => l.uid === p.uid);
+    return new maplibregl.Popup({ offset: 12 }).setHTML(
+      `<strong>${this.displayName(p)}</strong><br/>${this.roleTitle(p.role)}<br/>` +
+        (p.phone ? `<a href="tel:${p.phone}" dir="ltr">${p.phone}</a><br/>` : '') +
+        (loc?.motion ? `תנועה: ${loc.motion}<br/>` : ''),
+    );
   }
 
   private syncIncidentMarkers(): void {
@@ -563,7 +601,7 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
         el.appendChild(glyph);
         marker = new maplibregl.Marker({ element: el });
         marker.setPopup(
-          new maplibregl.Popup({ offset: 12 }).setText(`${inc.title || inc.category}: ${inc.desc}`),
+          new maplibregl.Popup({ offset: 12 }).setText(`${inc.title || categoryLabel(inc.category)}: ${inc.desc}`),
         );
         marker.setLngLat([inc.lng, inc.lat]).addTo(this.map);
         this.incidentMarkers.set(inc.incidentId, marker);
@@ -713,7 +751,7 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     const ref = this.dialog.open(ConfirmDialogComponent, {
       data: {
         title: 'מחיקת דיווח',
-        message: `למחוק את "${inc.title || inc.category}" לצמיתות? לא ניתן לבטל פעולה זו.`,
+        message: `למחוק את "${inc.title || categoryLabel(inc.category)}" לצמיתות? לא ניתן לבטל פעולה זו.`,
       },
     });
     ref.afterClosed().subscribe(async (ok: boolean) => {
@@ -734,7 +772,7 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
     const ref = this.dialog.open(ConfirmDialogComponent, {
       data: {
         title: 'הסרת משתתף',
-        message: `להסיר את ${p.name} מהאירוע? הסמן שלו יסומן כמוסר.`,
+        message: `להסיר את ${this.displayName(p)} מהאירוע? הסמן שלו יסומן כמוסר.`,
       },
     });
     ref.afterClosed().subscribe(async (ok: boolean) => {

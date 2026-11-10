@@ -46,48 +46,13 @@ import {
   template: `
     <div class="page" dir="rtl">
       <h2>הזמנות תפקיד — {{ event()?.name ?? '…' }}</h2>
-      <p class="sub">בחירת תפקיד יעד · דגלי ניהול/הזמנה · קוד 6 ספרות · שיתוף בוואטסאפ</p>
-
-      <mat-card class="card">
-        <form [formGroup]="form" (ngSubmit)="create()" class="grid">
-          <mat-form-field appearance="outline" class="full">
-            <mat-label>תפקיד יעד (רשימה סגורה)</mat-label>
-            <mat-select formControlName="targetRole" (selectionChange)="onRole($event.value)">
-              @for (r of roles(); track r.id) {
-                <mat-option [value]="r.id">{{ r.title }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-          <mat-checkbox formControlName="isManagerial">תפקיד ניהולי (כפופים תחתיו)</mat-checkbox>
-          <mat-checkbox formControlName="canInvite">מורשה להזמין תחתיו</mat-checkbox>
-          <mat-form-field appearance="outline">
-            <mat-label>מכסת שימושים (ריק = ללא הגבלה)</mat-label>
-            <input matInput formControlName="maxUses" type="number" min="1" dir="ltr" />
-          </mat-form-field>
-          <div class="ops">
-            <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving()">
-              @if (saving()) { <app-loader size="sm" color="#fff"></app-loader> } @else { הפק קישור }
-            </button>
-          </div>
-        </form>
-
-        @if (lastCode()) {
-          <div class="result">
-            <p><strong>קוד:</strong> <code dir="ltr">{{ lastCode() }}</code></p>
-            <p class="link" dir="ltr">{{ linkFor(lastCode()) }}</p>
-            <div class="row">
-              <button mat-stroked-button (click)="copyLink()">העתק קישור וקוד</button>
-              <button mat-flat-button color="primary" (click)="shareWhatsApp()">שתף בוואטסאפ</button>
-            </div>
-          </div>
-        }
-      </mat-card>
+      <p class="sub">ניהול תפקידי האירוע · הפקת קישורי הזמנה · שיתוף בוואטסאפ</p>
 
       <mat-card class="card roles-card">
         <div class="roles-head">
           <div>
             <h3>תפקידי האירוע</h3>
-            <p class="sub2">שמות, צבעים והרשאות לאירוע הזה בלבד — 8 התפקידים הקבועים נשארים קבועים.</p>
+            <p class="sub2">שמות, צבעים והרשאות לאירוע הזה בלבד — 8 התפקידים הקבועים נשארים קבועים. הדגלים בהפקת הזמנה נקבעים אוטומטית לפי התפקיד.</p>
           </div>
           <div class="row">
             <button mat-stroked-button type="button" (click)="resetRoles()" [disabled]="rolesSaving()">ברירת מחדל</button>
@@ -139,6 +104,41 @@ import {
             </div>
           }
         </div>
+      </mat-card>
+
+      <mat-card class="card">
+        <form [formGroup]="form" (ngSubmit)="create()" class="grid">
+          <mat-form-field appearance="outline" class="full">
+            <mat-label>תפקיד יעד (רשימה סגורה)</mat-label>
+            <mat-select formControlName="targetRole" (selectionChange)="onRole($event.value)">
+              @for (r of roles(); track r.id) {
+                <mat-option [value]="r.id">{{ r.title }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-checkbox formControlName="isManagerial">תפקיד ניהולי (כפופים תחתיו)</mat-checkbox>
+          <mat-checkbox formControlName="canInvite">מורשה להזמין תחתיו</mat-checkbox>
+          <mat-form-field appearance="outline">
+            <mat-label>מכסת שימושים (ריק = ללא הגבלה)</mat-label>
+            <input matInput formControlName="maxUses" type="number" min="1" dir="ltr" />
+          </mat-form-field>
+          <div class="ops">
+            <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving()">
+              @if (saving()) { <app-loader size="sm" color="#fff"></app-loader> } @else { הפק קישור }
+            </button>
+          </div>
+        </form>
+
+        @if (lastCode()) {
+          <div class="result">
+            <p><strong>קוד:</strong> <code dir="ltr">{{ lastCode() }}</code></p>
+            <p class="link" dir="ltr">{{ linkFor(lastCode()) }}</p>
+            <div class="row">
+              <button mat-stroked-button (click)="copyLink()">העתק קישור וקוד</button>
+              <button mat-flat-button color="primary" (click)="shareWhatsApp()">שתף בוואטסאפ</button>
+            </div>
+          </div>
+        }
       </mat-card>
 
       <div class="mat-elevation-z2 table-wrap">

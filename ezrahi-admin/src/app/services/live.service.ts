@@ -64,9 +64,9 @@ export class LiveService {
               const data = d.data() as Record<string, unknown>;
               return {
                 uid: d.id,
-                name: String(data['name'] ?? d.id.slice(0, 8)),
+                name: String(data['name'] ?? data['fullName'] ?? ''),
                 role: String(data['role'] ?? 'guide'),
-                phone: String(data['phone'] ?? ''),
+                phone: String(data['phone'] ?? data['phoneNumber'] ?? ''),
                 status: String(data['status'] ?? 'ACTIVE'),
                 lastSeen: data['lastSeen'] ?? data['updatedAt'],
                 battery: typeof data['battery'] === 'number' ? (data['battery'] as number) : null,
@@ -186,5 +186,21 @@ export class LiveService {
   async setParticipantStatus(eventId: string, uid: string, status: string): Promise<void> {
     const ref = doc(this.fb.firestore, 'events', eventId, 'participants', uid);
     await updateDoc(ref, { status, updatedAt: serverTimestamp() });
+  }
+
+  /** HQ crew manager: reassign a participant's role (base-8 role id). */
+  async setParticipantRole(eventId: string, uid: string, role: string): Promise<void> {
+    const ref = doc(this.fb.firestore, 'events', eventId, 'participants', uid);
+    await updateDoc(ref, { role, updatedAt: serverTimestamp() });
+  }
+
+  /** HQ crew manager: fix name/phone on a participant doc (field app owns them after join). */
+  async updateParticipant(
+    eventId: string,
+    uid: string,
+    patch: { name?: string; phone?: string },
+  ): Promise<void> {
+    const ref = doc(this.fb.firestore, 'events', eventId, 'participants', uid);
+    await updateDoc(ref, { ...patch, updatedAt: serverTimestamp() });
   }
 }
