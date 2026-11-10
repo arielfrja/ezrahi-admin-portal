@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, HostListener, signal, inject, ElementRef, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, signal, computed, inject, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -14,7 +14,7 @@ import { FirebaseService } from '../../services/firebase.service';
 import { EventService } from '../../services/event.service';
 import { LiveService, LiveParticipant, LiveLocation, FieldIncident } from '../../services/live.service';
 import { FieldEvent } from '../../models/event.model';
-import { BASE_ROLES } from '../../models/event.model';
+import { rolesForEvent } from '../../models/event.model';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 import { AuthService } from '../../services/auth.service';
 
@@ -27,8 +27,6 @@ const INCIDENT_CATEGORIES = [
 ];
 import { applyHebrewLabels } from '../../utils/hebrew-labels';
 import { Subscription } from 'rxjs';
-
-const ROLE_COLORS: Record<string, string> = Object.fromEntries(BASE_ROLES.map((r) => [r.id, r.color]));
 
 /** Android app parity — staff marker fill by liveness (MapLibreConfig). */
 const LIVENESS_COLORS = {
@@ -210,6 +208,8 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
   private dialog = inject(MatDialog);
 
   event = signal<FieldEvent | null>(null);
+  /** Effective 8 roles for this event (base defaults + event overrides). */
+  eventRoles = computed(() => rolesForEvent(this.event()));
   participants = signal<LiveParticipant[]>([]);
   locations = signal<LiveLocation[]>([]);
   incidents = signal<FieldIncident[]>([]);
@@ -431,11 +431,11 @@ export class CommandCenterComponent implements OnInit, OnDestroy {
   }
 
   colorFor(role: string): string {
-    return ROLE_COLORS[role] ?? '#16a34a';
+    return this.eventRoles().find((r) => r.id === role)?.color ?? '#16a34a';
   }
 
   roleTitle(role: string): string {
-    return BASE_ROLES.find((r) => r.id === role)?.title ?? role;
+    return this.eventRoles().find((r) => r.id === role)?.title ?? role;
   }
 
   lastSeen(p: LiveParticipant): string {

@@ -17,6 +17,21 @@ export interface EventRoute {
   rects?: EventRect[];
 }
 
+/**
+ * Per-event role customization (PRD §4.3): the 8 base roles stay fixed, but an
+ * event may re-title / re-color them, flip the managerial+invite flags, and
+ * narrow which roles each role can see.
+ */
+export interface EventRoleConfig {
+  id: string;
+  title: string;
+  color: string;
+  isManagerial: boolean;
+  canInvite: boolean;
+  /** Role ids this role may see; empty = see everyone (PRD default). */
+  visibleRoles: string[];
+}
+
 export interface FieldEvent {
   eventId: string;
   orgId: string;
@@ -27,6 +42,8 @@ export interface FieldEvent {
   startTime: unknown;
   endTime: unknown;
   route?: EventRoute | null;
+  /** Event-level overrides of the 8 base roles (absent → org/base defaults). */
+  rolesConfig?: EventRoleConfig[];
   createdAt?: unknown;
 }
 
@@ -60,3 +77,32 @@ export const BASE_ROLES = [
   { id: 'driver', title: 'נהג / לוגיסטיקה', color: '#ca8a04', isManagerial: false, canInvite: false },
   { id: 'tail', title: 'מאסף', color: '#64748b', isManagerial: false, canInvite: false },
 ];
+
+/** Base role shape without the per-event `visibleRoles` list. */
+export type BaseRole = (typeof BASE_ROLES)[number];
+
+/**
+ * Effective role list for an event: base roles merged with the event's
+ * `rolesConfig` overrides (missing/blank fields fall back to the base value).
+ */
+export function rolesForEvent(event: FieldEvent | null | undefined): EventRoleConfig[] {
+  const overrides = new Map<string, EventRoleConfig>(
+    (event?.rolesConfig ?? []).map((r) => [r.id, r]),
+  );
+  return BASE_ROLES.map((base) => {
+    const o = overrides.get(base.id);
+    return {
+      id: base.id,
+      title: o?.title?.trim() || base.title,
+      color: o?.color || base.color,
+      isManagerial: o?.isManagerial ?? base.isManagerial,
+      canInvite: o?.canInvite ?? base.canInvite,
+      visibleRoles: o?.visibleRoles ?? [],
+    };
+  });
+}
+
+/** Snapshot of the untouched defaults, for the "restore defaults" action. */
+export function defaultRolesConfig(): EventRoleConfig[] {
+  return BASE_ROLES.map((r) => ({ ...r, visibleRoles: [] as string[] }));
+}

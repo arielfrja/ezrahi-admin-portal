@@ -16,7 +16,13 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { InviteService } from '../../services/invite.service';
 import { EventService } from '../../services/event.service';
 import { RoleInvite, inviteLink, inviteWhatsAppText } from '../../models/invite.model';
-import { BASE_ROLES, FieldEvent } from '../../models/event.model';
+import {
+  BASE_ROLES,
+  EventRoleConfig,
+  FieldEvent,
+  defaultRolesConfig,
+  rolesForEvent,
+} from '../../models/event.model';
 
 /** Task 5.3 — /org/activities/:id/invites: 6-digit hierarchical role links. */
 @Component({
@@ -47,7 +53,7 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
           <mat-form-field appearance="outline" class="full">
             <mat-label>תפקיד יעד (רשימה סגורה)</mat-label>
             <mat-select formControlName="targetRole" (selectionChange)="onRole($event.value)">
-              @for (r of baseRoles; track r.id) {
+              @for (r of roles(); track r.id) {
                 <mat-option [value]="r.id">{{ r.title }}</mat-option>
               }
             </mat-select>
@@ -75,6 +81,64 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
             </div>
           </div>
         }
+      </mat-card>
+
+      <mat-card class="card roles-card">
+        <div class="roles-head">
+          <div>
+            <h3>תפקידי האירוע</h3>
+            <p class="sub2">שמות, צבעים והרשאות לאירוע הזה בלבד — 8 התפקידים הקבועים נשארים קבועים.</p>
+          </div>
+          <div class="row">
+            <button mat-stroked-button type="button" (click)="resetRoles()" [disabled]="rolesSaving()">ברירת מחדל</button>
+            <button mat-flat-button color="primary" type="button" (click)="saveRoles()" [disabled]="rolesSaving() || !rolesDirty()">
+              @if (rolesSaving()) { <app-loader size="sm" color="#fff"></app-loader> } @else { שמור תפקידים }
+            </button>
+          </div>
+        </div>
+        <div class="role-grid">
+          <div class="role-row head">
+            <span>תפקיד</span>
+            <span>שם מותאם</span>
+            <span>צבע</span>
+            <span>ניהולי</span>
+            <span>מזמין</span>
+            <span>רואה</span>
+          </div>
+          @for (r of roles(); track r.id; let i = $index) {
+            <div class="role-row">
+              <span class="base-role">{{ baseTitle(r.id) }}</span>
+              <input
+                class="title-input"
+                [value]="r.title"
+                [placeholder]="baseTitle(r.id)"
+                (input)="setRoleField(i, 'title', $any($event.target).value)" />
+              <input
+                class="color-input"
+                type="color"
+                [value]="r.color"
+                (input)="setRoleField(i, 'color', $any($event.target).value)" />
+              <mat-checkbox
+                [checked]="r.isManagerial"
+                (change)="setRoleField(i, 'isManagerial', $event.checked)"></mat-checkbox>
+              <mat-checkbox
+                [checked]="r.canInvite"
+                (change)="setRoleField(i, 'canInvite', $event.checked)"></mat-checkbox>
+              <mat-select
+                class="vis-select"
+                multiple
+                [value]="r.visibleRoles"
+                placeholder="כולם"
+                (selectionChange)="setRoleField(i, 'visibleRoles', $event.value)">
+                @for (o of roles(); track o.id) {
+                  @if (o.id !== r.id) {
+                    <mat-option [value]="o.id">{{ o.title }}</mat-option>
+                  }
+                }
+              </mat-select>
+            </div>
+          }
+        </div>
       </mat-card>
 
       <div class="mat-elevation-z2 table-wrap">
@@ -132,6 +196,16 @@ import { BASE_ROLES, FieldEvent } from '../../models/event.model';
     .table-wrap { background: #fff; border-radius: 8px; overflow: hidden; }
     table { width: 100%; }
     .loading-block { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px; color: #64748b; }
+    .roles-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .roles-head h3 { margin: 0 0 2px; font-size: 16px; }
+    .sub2 { margin: 0; color: #64748b; font-size: 12px; }
+    .role-grid { display: flex; flex-direction: column; gap: 2px; }
+    .role-row { display: grid; grid-template-columns: 130px 1fr 56px 72px 72px 190px; gap: 10px; align-items: center; padding: 4px 0; }
+    .role-row.head { font-size: 12px; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 4px; }
+    .base-role { font-weight: 500; font-size: 13px; }
+    .title-input { padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; font-size: 13px; width: 100%; box-sizing: border-box; }
+    .color-input { width: 44px; height: 30px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; cursor: pointer; }
+    .vis-select { font-size: 13px; }
   `],
 })
 export class InvitesGeneratorComponent implements OnInit {
@@ -150,6 +224,11 @@ export class InvitesGeneratorComponent implements OnInit {
   loading = signal(true);
   busyCode = signal<string | null>(null);
   lastCode = signal<string>('');
+  /** Draft of the event's 8 roles (base + this-event overrides). */
+  roles = signal<EventRoleConfig[]>(defaultRolesConfig());
+  rolesSaving = signal(false);
+  rolesDirty = signal(false);
+  private rolesSeeded = false;
 
   form = this.fb.group({
     targetRole: ['guide', Validators.required],
@@ -161,7 +240,14 @@ export class InvitesGeneratorComponent implements OnInit {
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id') ?? '';
     this.eventId.set(id);
-    this.events.watchEvent(id, (e) => this.event.set(e));
+    this.events.watchEvent(id, (e) => {
+      this.event.set(e);
+      // Seed the role editor once so live snapshots don't clobber local edits.
+      if (!this.rolesSeeded && e) {
+        this.roles.set(rolesForEvent(e));
+        this.rolesSeeded = true;
+      }
+    });
     this.invitesSvc.watchInvites(id).subscribe({
       next: (list) => {
         this.invites.set(list);
@@ -176,14 +262,43 @@ export class InvitesGeneratorComponent implements OnInit {
   }
 
   onRole(roleId: string): void {
-    const def = BASE_ROLES.find((r) => r.id === roleId);
+    const def = this.roles().find((r) => r.id === roleId);
     if (def) {
       this.form.patchValue({ isManagerial: def.isManagerial, canInvite: def.canInvite });
     }
   }
 
   roleTitle(id: string): string {
+    return this.roles().find((r) => r.id === id)?.title ?? id;
+  }
+
+  /** The fixed base name of a role (identity column of the editor). */
+  baseTitle(id: string): string {
     return BASE_ROLES.find((r) => r.id === id)?.title ?? id;
+  }
+
+  setRoleField<K extends keyof EventRoleConfig>(idx: number, key: K, value: EventRoleConfig[K]): void {
+    this.roles.update((list) => list.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+    this.rolesDirty.set(true);
+  }
+
+  resetRoles(): void {
+    this.roles.set(defaultRolesConfig());
+    this.rolesDirty.set(true);
+  }
+
+  async saveRoles(): Promise<void> {
+    this.rolesSaving.set(true);
+    try {
+      await this.events.updateEvent(this.eventId(), { rolesConfig: this.roles() });
+      this.rolesDirty.set(false);
+      this.rolesSeeded = false; // re-seed from the saved snapshot
+      this.snack.open('תפקידי האירוע נשמרו.', 'אישור', { duration: 2500 });
+    } catch (e: unknown) {
+      this.snack.open('שמירה נכשלה: ' + (e instanceof Error ? e.message : ''), 'סגור', { duration: 3500 });
+    } finally {
+      this.rolesSaving.set(false);
+    }
   }
 
   linkFor(code: string): string {
